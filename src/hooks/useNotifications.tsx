@@ -2,20 +2,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 
-export interface Notification {
-  id: string;
-  user_id: string;
-  type: string;
-  title: string;
-  message: string;
-  is_read: boolean;
-  reference_id?: string;
-  created_at: string;
-  updated_at: string;
-}
-
 export const useNotifications = () => {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
@@ -29,17 +17,18 @@ export const useNotifications = () => {
     }
 
     try {
+      // Keep current query structure since columns already changed
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id) // Changed from tenant_id to user_id
+        .eq('user_id', user.id)  // Use user_id (current structure)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       const notificationData = data || [];
       setNotifications(notificationData);
-      setUnreadCount(notificationData.filter(n => !n.is_read).length); // Changed from read to is_read
+      setUnreadCount(notificationData.filter(n => !n.is_read).length);  // Use is_read
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -51,7 +40,7 @@ export const useNotifications = () => {
     try {
       const { error } = await supabase
         .from('notifications')
-        .update({ is_read: true }) // Changed from read to is_read
+        .update({ is_read: true })  // Use is_read (current structure)
         .eq('id', notificationId);
 
       if (error) throw error;
@@ -60,11 +49,11 @@ export const useNotifications = () => {
       setNotifications(prev => 
         prev.map(notif => 
           notif.id === notificationId 
-            ? { ...notif, is_read: true } // Changed from read to is_read
+            ? { ...notif, is_read: true }
             : notif
         )
       );
-      
+
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -77,17 +66,17 @@ export const useNotifications = () => {
     try {
       const { error } = await supabase
         .from('notifications')
-        .update({ is_read: true }) // Changed from read to is_read
-        .eq('user_id', user.id) // Changed from tenant_id to user_id
-        .eq('is_read', false); // Changed from read to is_read
+        .update({ is_read: true })  // Use is_read
+        .eq('user_id', user.id)  // Use user_id
+        .eq('is_read', false);
 
       if (error) throw error;
 
       // Update local state
       setNotifications(prev => 
-        prev.map(notif => ({ ...notif, is_read: true })) // Changed from read to is_read
+        prev.map(notif => ({ ...notif, is_read: true }))
       );
-      
+
       setUnreadCount(0);
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
@@ -107,11 +96,10 @@ export const useNotifications = () => {
             event: 'INSERT',
             schema: 'public',
             table: 'notifications',
-            filter: `user_id=eq.${user.id}` // Changed from tenant_id to user_id
+            filter: `user_id=eq.${user.id}`  // Use user_id
           },
           (payload) => {
-            const newNotification = payload.new as Notification;
-            setNotifications(prev => [newNotification, ...prev]);
+            setNotifications(prev => [payload.new as any, ...prev]);
             setUnreadCount(prev => prev + 1);
           }
         )
@@ -121,19 +109,17 @@ export const useNotifications = () => {
             event: 'UPDATE',
             schema: 'public',
             table: 'notifications',
-            filter: `user_id=eq.${user.id}` // Changed from tenant_id to user_id
+            filter: `user_id=eq.${user.id}`  // Use user_id
           },
           (payload) => {
-            const updatedNotification = payload.new as Notification;
             setNotifications(prev => 
               prev.map(notif => 
-                notif.id === updatedNotification.id ? updatedNotification : notif
+                notif.id === payload.new.id ? payload.new as any : notif
               )
             );
-            
+
             // Update unread count
-            const oldNotif = payload.old as Notification;
-            if (oldNotif.is_read === false && updatedNotification.is_read === true) { // Changed from read to is_read
+            if (payload.old.is_read === false && payload.new.is_read === true) {
               setUnreadCount(prev => Math.max(0, prev - 1));
             }
           }
