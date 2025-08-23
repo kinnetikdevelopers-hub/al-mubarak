@@ -15,6 +15,7 @@ const Auth = () => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [idNumber, setIdNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -111,6 +112,7 @@ if (initializing) {
         first_name: firstName,
         last_name: lastName,
         phone: phone,
+        id_number_full: idNumber,                 
         display_name: `${firstName} ${lastName}`,
       });
       
@@ -156,7 +158,7 @@ if (initializing) {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <Building2 className="h-10 w-10 mx-auto mb-2 text-primary" />
-          <CardTitle className="text-2xl">Green Estate</CardTitle>
+          <CardTitle className="text-2xl">Al Mubarak</CardTitle>
           <CardDescription>
             Manage your properties with ease
           </CardDescription>
@@ -245,7 +247,7 @@ if (initializing) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-phone">Phone (Optional)</Label>
+                  <Label htmlFor="signup-phone">Phone</Label>
                   <Input
                     id="signup-phone"
                     name="phone"
@@ -255,6 +257,30 @@ if (initializing) {
                     onChange={(e) => setPhone(e.target.value)}
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-idnumber">ID Number (Optional)</Label>
+                  <Input
+                    id="signup-idnumber"
+                    name="idNumber"
+                    type="text"
+                    placeholder="Enter your ID number"
+                    value={idNumber}
+                    onChange={(e) => setIdNumber(e.target.value)}
+                  />  
+                </div>                
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <Input
+                    id="signup-password"
+                    name="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                
                 <Button 
                   type="submit" 
                   className="w-full" 
