@@ -258,7 +258,7 @@ if (initializing) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-idnumber">ID Number (Optional)</Label>
+                  <Label htmlFor="signup-idnumber">ID Number</Label>
                   <Input
                     id="signup-idnumber"
                     name="idNumber"
