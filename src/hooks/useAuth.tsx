@@ -21,6 +21,7 @@ interface AuthContextType {
   profile: Profile | null;
   session: Session | null;
   isLoading: boolean;
+  initializing: boolean; // Added this
   signIn: (email: string, password: string, rememberMe?: boolean) => Promise<{ error: any }>;
   signUp: (email: string, password: string, additionalData?: any) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true); // Added this line
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -68,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (error) {
           console.error('Session check error:', error);
           setIsLoading(false);
+          setInitializing(false); // Added this line
           return;
         }
 
@@ -79,10 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         setIsLoading(false);
+        setInitializing(false); // Added this line
       } catch (error) {
         console.error('Session check failed:', error);
         if (mounted) {
           setIsLoading(false);
+          setInitializing(false); // Added this line
         }
       }
     };
@@ -97,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         
-        // Fetch profile data if user is authenticated
+        // Fetch profile data if user is authenticated.
         if (session?.user && event !== 'SIGNED_OUT') {          
             fetchProfile(session.user.id);
         } else {
@@ -105,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         
         setIsLoading(false);
+        setInitializing(false); // Added this line
       }
     );
 
@@ -173,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     session,
     isLoading,
+    initializing, // Added this line
     signIn,
     signUp,
     signOut,
