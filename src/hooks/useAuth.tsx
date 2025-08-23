@@ -153,10 +153,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         emailRedirectTo: redirectUrl,
         data: additionalData ? {
-          first_name: additionalData.firstName,
-          last_name: additionalData.lastName,
-          display_name: additionalData.displayName,
-          id_number_full: additionalData.idNumber,
+          first_name: additionalData.first_name,
+          last_name: additionalData.last_name,
+          display_name: additionalData.display_name,
+          id_number_full: additionalData.id_number_full,
           phone: additionalData.phone
         } : {}
       }
