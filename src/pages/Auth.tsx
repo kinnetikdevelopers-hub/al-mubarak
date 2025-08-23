@@ -255,6 +255,7 @@ if (initializing) {
                     placeholder="Enter your phone number"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                    required
                   />
                 </div>
                 <div className="space-y-2">
@@ -266,6 +267,7 @@ if (initializing) {
                     placeholder="Enter your ID number"
                     value={idNumber}
                     onChange={(e) => setIdNumber(e.target.value)}
+                    required
                   />  
                 </div>                
                 <div className="space-y-2">
