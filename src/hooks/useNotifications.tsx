@@ -17,18 +17,17 @@ export const useNotifications = () => {
     }
 
     try {
-      // Keep current query structure since columns already changed
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', user.id)  // Use user_id (current structure)
+        .eq('tenant_id', user.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       const notificationData = data || [];
       setNotifications(notificationData);
-      setUnreadCount(notificationData.filter(n => !n.is_read).length);  // Use is_read
+      setUnreadCount(notificationData.filter(n => !n.read).length);
     } catch (error) {
       console.error('Error fetching notifications:', error);
     } finally {
@@ -40,7 +39,7 @@ export const useNotifications = () => {
     try {
       const { error } = await supabase
         .from('notifications')
-        .update({ is_read: true })  // Use is_read (current structure)
+        .update({ read: true })
         .eq('id', notificationId);
 
       if (error) throw error;
@@ -49,11 +48,11 @@ export const useNotifications = () => {
       setNotifications(prev => 
         prev.map(notif => 
           notif.id === notificationId 
-            ? { ...notif, is_read: true }
+            ? { ...notif, read: true }
             : notif
         )
       );
-
+      
       setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -66,17 +65,17 @@ export const useNotifications = () => {
     try {
       const { error } = await supabase
         .from('notifications')
-        .update({ is_read: true })  // Use is_read
-        .eq('user_id', user.id)  // Use user_id
-        .eq('is_read', false);
+        .update({ read: true })
+        .eq('tenant_id', user.id)
+        .eq('read', false);
 
       if (error) throw error;
 
       // Update local state
       setNotifications(prev => 
-        prev.map(notif => ({ ...notif, is_read: true }))
+        prev.map(notif => ({ ...notif, read: true }))
       );
-
+      
       setUnreadCount(0);
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
@@ -96,7 +95,7 @@ export const useNotifications = () => {
             event: 'INSERT',
             schema: 'public',
             table: 'notifications',
-            filter: `user_id=eq.${user.id}`  // Use user_id
+            filter: `tenant_id=eq.${user.id}`
           },
           (payload) => {
             setNotifications(prev => [payload.new as any, ...prev]);
@@ -109,7 +108,7 @@ export const useNotifications = () => {
             event: 'UPDATE',
             schema: 'public',
             table: 'notifications',
-            filter: `user_id=eq.${user.id}`  // Use user_id
+            filter: `tenant_id=eq.${user.id}`
           },
           (payload) => {
             setNotifications(prev => 
@@ -117,9 +116,9 @@ export const useNotifications = () => {
                 notif.id === payload.new.id ? payload.new as any : notif
               )
             );
-
+            
             // Update unread count
-            if (payload.old.is_read === false && payload.new.is_read === true) {
+            if (payload.old.read === false && payload.new.read === true) {
               setUnreadCount(prev => Math.max(0, prev - 1));
             }
           }
