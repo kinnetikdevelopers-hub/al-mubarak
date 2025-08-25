@@ -43,7 +43,8 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
   const [paymentForm, setPaymentForm] = useState({
     full_name: '',
     amount: '',
-    mpesa_code: ''
+    mpesa_code: '',
+    unit_number: ''
   });
   const { toast } = useToast();
 
@@ -101,10 +102,10 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
   }, [profile?.id]);
 
   const submitPayment = async (billingMonthId: string) => {
-    if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.mpesa_code) {
+    if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.mpesa_code || !paymentForm.unit_number) {
       toast({
         title: "Error",
-        description: "Please fill in all fields",
+        description: "Please fill in all fields including unit number",
         variant: "destructive",
       });
       return;
@@ -119,6 +120,7 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
           full_name: paymentForm.full_name,
           amount: parseFloat(paymentForm.amount),
           mpesa_code: paymentForm.mpesa_code,
+          unit_number: paymentForm.unit_number,
           status: 'pending'
         }]);
 
@@ -129,7 +131,7 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
         description: "Your payment is waiting for admin approval. Kindly be patient.",
       });
 
-      setPaymentForm({ full_name: '', amount: '', mpesa_code: '' });
+      setPaymentForm({ full_name: '', amount: '', mpesa_code: '', unit_number: '' });
       fetchTenantData(); // Refresh data
     } catch (error) {
       console.error('Error submitting payment:', error);
@@ -351,6 +353,17 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
                               value={paymentForm.full_name}
                               onChange={(e) => setPaymentForm({...paymentForm, full_name: e.target.value})}
                               placeholder="Enter your full name"
+                            />
+                          </div>
+
+                          <div>
+                            <Label htmlFor={`unit-${month.id}`}>Unit Number *</Label>
+                            <Input
+                              id={`unit-${month.id}`}
+                              value={paymentForm.unit_number}
+                              onChange={(e) => setPaymentForm({...paymentForm, unit_number: e.target.value})}
+                              placeholder="Enter your unit number"
+                              required
                             />
                           </div>
                           
