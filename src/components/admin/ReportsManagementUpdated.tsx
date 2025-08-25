@@ -12,8 +12,11 @@ import {
 } from 'lucide-react';
 import { PieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Pie } from 'recharts';
 import { Button } from '@/components/ui/button';
+import PDFGenerator from '../PDFGenerator';
+import { useRef } from 'react';
 
 const ReportsManagementUpdated = () => {
+  const pdfContentRef = useRef<HTMLDivElement>(null);
   const [billingMonths, setBillingMonths] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [payments, setPayments] = useState<any[]>([]);
@@ -164,10 +167,11 @@ const ReportsManagementUpdated = () => {
           </h2>
           <p className="text-muted-foreground">View detailed financial analytics and reports</p>
         </div>
-        <Button variant="outline">
-          <Download className="h-4 w-4 mr-2" />
-          Export Report
-        </Button>
+        <PDFGenerator 
+          contentRef={pdfContentRef}
+          fileName="financial-report"
+          disabled={!selectedMonth}
+        />
       </div>
 
       {/* Month Selection */}
@@ -193,7 +197,17 @@ const ReportsManagementUpdated = () => {
       </Card>
 
       {selectedMonth && (
-        <>
+        <div ref={pdfContentRef} className="space-y-6">
+          {/* PDF Header for export */}
+          <div className="print:block hidden mb-6">
+            <h1 className="text-2xl font-bold text-center mb-2">Financial Report</h1>
+            <p className="text-center text-muted-foreground">
+              {billingMonths.find(m => m.id === selectedMonth) && 
+                `${getMonthName(billingMonths.find(m => m.id === selectedMonth)?.month)} ${billingMonths.find(m => m.id === selectedMonth)?.year}`
+              }
+            </p>
+          </div>
+          
           {/* Stats Cards */}
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
@@ -358,7 +372,7 @@ const ReportsManagementUpdated = () => {
               </div>
             </CardContent>
           </Card>
-        </>
+        </div>
       )}
 
       {!selectedMonth && (
