@@ -132,7 +132,7 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
       case 'dashboard':
         return (
           <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card className="shadow-sm hover:scale-105 transition-all duration-300 hover:shadow-lg">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Total Units</CardTitle>
@@ -153,19 +153,7 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
                   <div className="text-2xl font-bold">{stats.activeTenants}</div>
                   <p className="text-xs text-muted-foreground">Approved tenants</p>
                 </CardContent>
-              </Card>
-              
-              <Card className="shadow-sm hover:scale-105 transition-all duration-300 hover:shadow-lg">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Monthly Revenue</CardTitle>
-                  <DollarSign className="h-4 w-4 text-primary animate-pulse-gentle" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">KES {stats.monthlyRevenue}</div>
-                  <p className="text-xs text-muted-foreground">This month</p>
-                </CardContent>
-              </Card>
-              
+              </Card>        
               <Card className="shadow-sm hover:scale-105 transition-all duration-300 hover:shadow-lg">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
