@@ -19,6 +19,7 @@ import {
   Building2,
   Home
 } from 'lucide-react';
+import TenantDetailsModal from './TenantDetailsModal';
 
 interface Profile {
   id: string;
@@ -27,10 +28,13 @@ interface Profile {
   last_name?: string;
   phone?: string;
   id_number?: string;
+  id_number_full?: string;
   role: 'admin' | 'tenant';
   status: 'pending' | 'approved' | 'suspended';
   created_at: string;
   updated_at: string;
+  lease_start_date?: string;
+  lease_end_date?: string;
 }
 
 const TenantManagement = () => {
@@ -41,6 +45,8 @@ const TenantManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('approve');
+  const [selectedTenant, setSelectedTenant] = useState<Profile | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const { toast } = useToast();
 
   const fetchTenants = async () => {
@@ -112,6 +118,27 @@ const TenantManagement = () => {
   useEffect(() => {
     fetchTenants();
     fetchUnits();
+    
+    // Set up real-time subscriptions
+    const profilesChannel = supabase
+      .channel('profiles-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchTenants();
+      })
+      .subscribe();
+
+    const unitsChannel = supabase
+      .channel('units-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'units' }, () => {
+        fetchUnits();
+        fetchTenantsWithUnits();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(profilesChannel);
+      supabase.removeChannel(unitsChannel);
+    };
   }, []);
 
   useEffect(() => {
@@ -274,8 +301,21 @@ const TenantManagement = () => {
               
               {getStatusBadge(tenant.status)}
               
-              {showActions && (
+                  {showActions && (
                 <div className="flex items-center space-x-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedTenant(tenant);
+                      setIsDetailsModalOpen(true);
+                    }}
+                    className="text-primary border-primary/20 hover:bg-primary/10"
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    View
+                  </Button>
+                  
                   {tenant.status === 'pending' && (
                     <>
                       <Button
@@ -395,20 +435,30 @@ const TenantManagement = () => {
           </CardContent>
         </Card>
         
-        <Card className="shadow-sm">
+        <Card 
+          className={`shadow-sm transition-all duration-300 ${suspendedCount > 0 ? 'cursor-pointer hover:scale-105 hover:shadow-lg' : ''}`}
+          onClick={() => {
+            if (suspendedCount > 0) {
+              setActiveTab('suspended');
+            }
+          }}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Suspended</CardTitle>
             <UserX className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{suspendedCount}</div>
+            {suspendedCount > 0 && (
+              <p className="text-xs text-muted-foreground">Click to view</p>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* Tenant Management Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="approve" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
             Approve ({pendingCount})
@@ -420,6 +470,10 @@ const TenantManagement = () => {
           <TabsTrigger value="allocate" className="flex items-center gap-2">
             <Home className="h-4 w-4" />
             Allocate
+          </TabsTrigger>
+          <TabsTrigger value="suspended" className="flex items-center gap-2">
+            <UserX className="h-4 w-4" />
+            Suspended ({suspendedCount})
           </TabsTrigger>
         </TabsList>
 
@@ -468,7 +522,29 @@ const TenantManagement = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="suspended" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Suspended Tenants</CardTitle>
+              <CardDescription>Tenants who were suspended while awaiting approval</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {renderTenantList(suspendedTenants)}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <TenantDetailsModal
+        tenant={selectedTenant}
+        isOpen={isDetailsModalOpen}
+        onClose={() => {
+          setIsDetailsModalOpen(false);
+          setSelectedTenant(null);
+        }}
+        onTenantUpdate={fetchTenants}
+      />
     </div>
   );
 };
