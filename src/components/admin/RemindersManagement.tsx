@@ -382,7 +382,7 @@ const RemindersManagement = () => {
                   
                   <div className="text-right text-sm">
                     <p className="font-medium">
-                      ${tenant.units?.[0]?.rent_amount || 0}
+                      KES {tenant.units?.[0]?.rent_amount || 0}
                     </p>
                     <p className="text-muted-foreground">Monthly rent</p>
                   </div>
