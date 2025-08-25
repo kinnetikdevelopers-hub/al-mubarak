@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -22,7 +23,10 @@ import {
   Trash2,
   Eye,
   Users,
-  Filter
+  Filter,
+  Calendar,
+  UserCheck,
+  FileText
 } from 'lucide-react';
 
 interface Unit {
@@ -34,6 +38,8 @@ interface Unit {
   rent_amount: number;
   status: 'occupied' | 'vacant' | 'maintenance';
   tenant_id: string | null;
+  lease_start_date?: string | null;
+  lease_end_date?: string | null;
   created_at: string;
   updated_at: string;
   profiles?: {
@@ -43,14 +49,24 @@ interface Unit {
   };
 }
 
+interface Tenant {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+}
+
 const UnitsManagement = () => {
   const [units, setUnits] = useState<Unit[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [filteredUnits, setFilteredUnits] = useState<Unit[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+  const [allocatingUnit, setAllocatingUnit] = useState<Unit | null>(null);
   const { toast } = useToast();
 
   const [newUnit, setNewUnit] = useState({
@@ -62,6 +78,12 @@ const UnitsManagement = () => {
     status: 'vacant' as 'vacant' | 'occupied' | 'maintenance'
   });
 
+  const [leaseInfo, setLeaseInfo] = useState({
+    tenant_id: '',
+    lease_start_date: '',
+    lease_end_date: ''
+  });
+
   const fetchUnits = async () => {
     try {
       const { data, error } = await supabase
@@ -71,7 +93,8 @@ const UnitsManagement = () => {
           profiles:tenant_id (
             first_name,
             last_name,
-            email
+            email,
+            phone
           )
         `)
         .order('floor', { ascending: true })
@@ -92,8 +115,23 @@ const UnitsManagement = () => {
     }
   };
 
+  const fetchTenants = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, email, phone')
+        .eq('role', 'tenant');
+
+      if (error) throw error;
+      setTenants(data as Tenant[] || []);
+    } catch (error) {
+      console.error('Error fetching tenants:', error);
+    }
+  };
+
   useEffect(() => {
     fetchUnits();
+    fetchTenants();
   }, []);
 
   useEffect(() => {
@@ -108,6 +146,52 @@ const UnitsManagement = () => {
 
     setFilteredUnits(filtered);
   }, [searchTerm, statusFilter, units]);
+
+  const handleAllocateUnit = async () => {
+    if (!allocatingUnit || !leaseInfo.tenant_id || !leaseInfo.lease_start_date || !leaseInfo.lease_end_date) {
+      toast({
+        title: "Error",
+        description: "Please fill in all lease information fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Update the unit with tenant and lease information
+      const { error } = await supabase
+        .from('units')
+        .update({
+          tenant_id: leaseInfo.tenant_id,
+          lease_start_date: leaseInfo.lease_start_date,
+          lease_end_date: leaseInfo.lease_end_date,
+          status: 'occupied'
+        })
+        .eq('id', allocatingUnit.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Unit allocated successfully with lease information",
+      });
+
+      setAllocatingUnit(null);
+      setLeaseInfo({
+        tenant_id: '',
+        lease_start_date: '',
+        lease_end_date: ''
+      });
+      fetchUnits();
+    } catch (error) {
+      console.error('Error updating lease info:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update lease information",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleAddUnit = async () => {
     if (!newUnit.floor || !newUnit.unit_number || !newUnit.rent_amount) {
@@ -424,7 +508,7 @@ const UnitsManagement = () => {
         </Card>
       </div>
 
-      {/* Search and Filters */}
+      {/* Units Management with Tabs */}
       <Card>
         <CardHeader>
           <CardTitle>Unit Directory</CardTitle>
@@ -495,6 +579,12 @@ const UnitsManagement = () => {
                   {unit.profiles && (
                     <div className="text-sm text-muted-foreground">
                       <strong>Tenant:</strong> {unit.profiles.first_name} {unit.profiles.last_name}
+                      {unit.lease_start_date && unit.lease_end_date && (
+                        <div className="text-xs mt-1">
+                          <Calendar className="h-3 w-3 inline mr-1" />
+                          {new Date(unit.lease_start_date).toLocaleDateString()} - {new Date(unit.lease_end_date).toLocaleDateString()}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -508,6 +598,17 @@ const UnitsManagement = () => {
                       <Edit className="h-3 w-3 mr-1" />
                       Edit
                     </Button>
+                    {unit.status === 'vacant' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1"
+                        onClick={() => setAllocatingUnit(unit)}
+                      >
+                        <UserCheck className="h-3 w-3 mr-1" />
+                        Allocate
+                      </Button>
+                    )}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="outline" size="sm" className="flex-1">
@@ -589,6 +690,76 @@ const UnitsManagement = () => {
                 Update Unit
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Allocate Unit Dialog */}
+      {allocatingUnit && (
+        <Dialog open={!!allocatingUnit} onOpenChange={() => setAllocatingUnit(null)}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Allocate Unit {allocatingUnit.unit_number}</DialogTitle>
+              <DialogDescription>
+                Assign a tenant and set lease information
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Tabs defaultValue="allocate" className="w-full">
+              <TabsList className="grid w-full grid-cols-1">
+                <TabsTrigger value="allocate">Allocate Tenant</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="allocate" className="space-y-4">
+                <div>
+                  <Label htmlFor="tenant">Select Tenant</Label>
+                  <Select 
+                    value={leaseInfo.tenant_id} 
+                    onValueChange={(value) => setLeaseInfo({...leaseInfo, tenant_id: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a tenant" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-background border z-50">
+                      {tenants.map((tenant) => (
+                        <SelectItem key={tenant.id} value={tenant.id}>
+                          {tenant.first_name} {tenant.last_name} ({tenant.email})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="lease_start">Lease Start Date</Label>
+                    <Input
+                      id="lease_start"
+                      type="date"
+                      value={leaseInfo.lease_start_date}
+                      onChange={(e) => setLeaseInfo({...leaseInfo, lease_start_date: e.target.value})}
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="lease_end">Lease End Date</Label>
+                    <Input
+                      id="lease_end"
+                      type="date"
+                      value={leaseInfo.lease_end_date}
+                      onChange={(e) => setLeaseInfo({...leaseInfo, lease_end_date: e.target.value})}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex gap-2 pt-4">
+                  <Button onClick={handleAllocateUnit} className="flex-1">
+                    <FileText className="h-4 w-4 mr-2" />
+                    Save Lease Information
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
       )}
