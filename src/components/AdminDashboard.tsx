@@ -58,12 +58,37 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
 
       if (approvedError) throw approvedError;
 
+      // Fetch total units count
+      const { data: unitsData, error: unitsError } = await supabase
+        .from('units')
+        .select('id');
+
+      if (unitsError) throw unitsError;
+
+      // Fetch pending payments
+      const { data: pendingPaymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('id')
+        .eq('status', 'pending');
+
+      if (paymentsError) throw paymentsError;
+
+      // Calculate monthly revenue from paid payments
+      const { data: paidPaymentsData, error: revenueError } = await supabase
+        .from('payments')
+        .select('amount')
+        .eq('status', 'paid');
+
+      if (revenueError) throw revenueError;
+
+      const monthlyRevenue = paidPaymentsData?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0;
+
       setStats({
-        totalUnits: 0, // TODO: Implement units table
+        totalUnits: unitsData?.length || 0,
         activeTenants: approvedTenants?.length || 0,
-        monthlyRevenue: 0, // TODO: Implement billing
+        monthlyRevenue,
         pendingApprovals: pendingTenants?.length || 0,
-        pendingPayments: 0 // TODO: Implement payments
+        pendingPayments: pendingPaymentsData?.length || 0
       });
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -72,6 +97,34 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
 
   useEffect(() => {
     fetchStats();
+    
+    // Set up real-time subscriptions for dynamic updates
+    const unitsChannel = supabase
+      .channel('units-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'units' }, () => {
+        fetchStats();
+      })
+      .subscribe();
+
+    const paymentsChannel = supabase
+      .channel('payments-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+        fetchStats();
+      })
+      .subscribe();
+
+    const profilesChannel = supabase
+      .channel('profiles-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchStats();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(unitsChannel);
+      supabase.removeChannel(paymentsChannel);
+      supabase.removeChannel(profilesChannel);
+    };
   }, []);
 
   const renderTabContent = () => {
