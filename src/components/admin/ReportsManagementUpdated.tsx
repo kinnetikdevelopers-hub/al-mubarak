@@ -6,21 +6,17 @@ import {
   BarChart3, 
   DollarSign, 
   TrendingUp,
-  PieChart as PieChartIcon,
+  PieChart,
   Calendar,
   Download
 } from 'lucide-react';
-import { PieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Pie } from 'recharts';
+import { PieChart as RechartsPieChart, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { Button } from '@/components/ui/button';
-import PDFGenerator from '../PDFGenerator';
-import { useRef } from 'react';
 
-const ReportsManagementUpdated = () => {
-  const pdfContentRef = useRef<HTMLDivElement>(null);
+const ReportsManagement = () => {
   const [billingMonths, setBillingMonths] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [payments, setPayments] = useState<any[]>([]);
-  const [units, setUnits] = useState<any[]>([]);
   const [stats, setStats] = useState({
     totalExpected: 0,
     totalCollected: 0,
@@ -43,20 +39,6 @@ const ReportsManagementUpdated = () => {
     }
   };
 
-  const fetchUnits = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('units')
-        .select('*')
-        .eq('status', 'occupied');
-
-      if (error) throw error;
-      setUnits(data || []);
-    } catch (error) {
-      console.error('Error fetching units:', error);
-    }
-  };
-
   const fetchPaymentStats = async (billingMonthId: string) => {
     try {
       const { data: paymentsData, error: paymentsError } = await supabase
@@ -69,14 +51,12 @@ const ReportsManagementUpdated = () => {
       const payments = paymentsData || [];
       setPayments(payments);
 
-      // Calculate stats based on occupied units
-      const totalExpected = units.reduce((sum, unit) => sum + (unit.rent_amount || 0), 0);
+      // Calculate stats
+      const totalExpected = payments.length * 1000; // Assuming base rent of $1000
       const paidPayments = payments.filter(p => p.status === 'paid');
-      const partialPayments = payments.filter(p => p.status === 'partial');
       const pendingPayments = payments.filter(p => p.status === 'pending');
       
-      const totalCollected = paidPayments.reduce((sum, p) => sum + (p.amount || 0), 0) + 
-                           partialPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+      const totalCollected = paidPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       const totalPending = pendingPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
       const collectionRate = totalExpected > 0 ? (totalCollected / totalExpected) * 100 : 0;
 
@@ -93,14 +73,13 @@ const ReportsManagementUpdated = () => {
 
   useEffect(() => {
     fetchBillingMonths();
-    fetchUnits();
   }, []);
 
   useEffect(() => {
-    if (selectedMonth && units.length > 0) {
+    if (selectedMonth) {
       fetchPaymentStats(selectedMonth);
     }
-  }, [selectedMonth, units]);
+  }, [selectedMonth]);
 
   const getMonthName = (month: number) => {
     const months = [
@@ -110,49 +89,26 @@ const ReportsManagementUpdated = () => {
     return months[month - 1];
   };
 
-  // Enhanced pie chart data with proper colors
+  // Pie chart data
   const pieData = [
-    { 
-      name: 'Expected Rent', 
-      value: stats.totalExpected, 
-      color: '#3b82f6',
-      percentage: 100
-    },
-    { 
-      name: 'Collected Rent', 
-      value: stats.totalCollected, 
-      color: '#10b981',
-      percentage: stats.totalExpected > 0 ? (stats.totalCollected / stats.totalExpected) * 100 : 0
-    },
-    { 
-      name: 'Pending Rent', 
-      value: stats.totalExpected - stats.totalCollected, 
-      color: '#f59e0b',
-      percentage: stats.totalExpected > 0 ? ((stats.totalExpected - stats.totalCollected) / stats.totalExpected) * 100 : 0
-    }
+    { name: 'Collected', value: stats.totalCollected, color: '#22c55e' },
+    { name: 'Pending', value: stats.totalPending, color: '#f59e0b' },
+    { name: 'Outstanding', value: stats.totalExpected - stats.totalCollected - stats.totalPending, color: '#ef4444' }
   ];
-
-  // Custom label function for pie chart
-  const renderLabel = (entry: any) => {
-    return `${entry.name}: KES ${entry.value.toLocaleString()} (${entry.percentage.toFixed(1)}%)`;
-  };
 
   // Bar chart data
   const barData = [
     {
       name: 'Expected',
-      amount: stats.totalExpected,
-      color: '#3b82f6'
+      amount: stats.totalExpected
     },
     {
       name: 'Collected',
-      amount: stats.totalCollected,
-      color: '#10b981'
+      amount: stats.totalCollected
     },
     {
       name: 'Pending',
-      amount: stats.totalPending,
-      color: '#f59e0b'
+      amount: stats.totalPending
     }
   ];
 
@@ -167,11 +123,10 @@ const ReportsManagementUpdated = () => {
           </h2>
           <p className="text-muted-foreground">View detailed financial analytics and reports</p>
         </div>
-        <PDFGenerator 
-          contentRef={pdfContentRef}
-          fileName="financial-report"
-          disabled={!selectedMonth}
-        />
+        <Button variant="outline">
+          <Download className="h-4 w-4 mr-2" />
+          Export Report
+        </Button>
       </div>
 
       {/* Month Selection */}
@@ -197,58 +152,46 @@ const ReportsManagementUpdated = () => {
       </Card>
 
       {selectedMonth && (
-        <div ref={pdfContentRef} className="space-y-6">
-          {/* PDF Header for export */}
-          <div className="print:block hidden mb-6">
-            <h1 className="text-2xl font-bold text-center mb-2">Financial Report</h1>
-            <p className="text-center text-muted-foreground">
-              {billingMonths.find(m => m.id === selectedMonth) && 
-                `${getMonthName(billingMonths.find(m => m.id === selectedMonth)?.month)} ${billingMonths.find(m => m.id === selectedMonth)?.year}`
-              }
-            </p>
-          </div>
-          
+        <>
           {/* Stats Cards */}
           <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Expected Rent</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Expected</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">KES {stats.totalExpected.toLocaleString()}</div>
-                <p className="text-xs text-muted-foreground">Total rental income target</p>
+                <div className="text-2xl font-bold">${stats.totalExpected.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">Rental income target</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Collected Rent</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Collected</CardTitle>
                 <TrendingUp className="h-4 w-4 text-success" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-success">KES {stats.totalCollected.toLocaleString()}</div>
+                <div className="text-2xl font-bold text-success">${stats.totalCollected.toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">Successfully collected</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Pending Rent</CardTitle>
+                <CardTitle className="text-sm font-medium">Total Pending</CardTitle>
                 <Calendar className="h-4 w-4 text-warning" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-warning">
-                  KES {(stats.totalExpected - stats.totalCollected).toLocaleString()}
-                </div>
-                <p className="text-xs text-muted-foreground">Outstanding amount</p>
+                <div className="text-2xl font-bold text-warning">${stats.totalPending.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">Awaiting confirmation</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
-                <PieChartIcon className="h-4 w-4 text-primary" />
+                <PieChart className="h-4 w-4 text-primary" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-primary">{stats.collectionRate.toFixed(1)}%</div>
@@ -259,48 +202,33 @@ const ReportsManagementUpdated = () => {
 
           {/* Charts */}
           <div className="grid gap-6 md:grid-cols-2">
-            {/* Enhanced Pie Chart */}
+            {/* Pie Chart */}
             <Card>
               <CardHeader>
-                <CardTitle>Rent Collection Breakdown</CardTitle>
-                <CardDescription>Expected vs Collected vs Pending Rent</CardDescription>
+                <CardTitle>Collection Breakdown</CardTitle>
+                <CardDescription>Distribution of rent payments</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieData.filter(item => item.value > 0)}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={renderLabel}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="value"
-                      >
-                        {pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        formatter={(value: number) => [`KES ${value.toLocaleString()}`, 'Amount']}
-                      />
-                    </PieChart>
+                    <RechartsPieChart>
+                      <defs>
+                        <filter id="shadow">
+                          <feDropShadow dx="2" dy="2" stdDeviation="3" floodOpacity="0.3"/>
+                        </filter>
+                      </defs>
+                      {pieData.map((entry, index) => (
+                        <circle
+                          key={`pie-${index}`}
+                          r={index === 0 ? 80 : index === 1 ? 60 : 40}
+                          fill={entry.color}
+                          cx="50%"
+                          cy="50%"
+                        />
+                      ))}
+                      <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Amount']} />
+                    </RechartsPieChart>
                   </ResponsiveContainer>
-                </div>
-                
-                {/* Legend */}
-                <div className="flex justify-center gap-4 mt-4">
-                  {pieData.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: item.color }}
-                      />
-                      <span className="text-sm text-muted-foreground">{item.name}</span>
-                    </div>
-                  ))}
                 </div>
               </CardContent>
             </Card>
@@ -309,7 +237,7 @@ const ReportsManagementUpdated = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Revenue Comparison</CardTitle>
-                <CardDescription>Expected vs collected rent amounts</CardDescription>
+                <CardDescription>Expected vs actual collections</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="h-[300px]">
@@ -318,7 +246,7 @@ const ReportsManagementUpdated = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis />
-                      <Tooltip formatter={(value: number) => [`KES ${value.toLocaleString()}`, 'Amount']} />
+                      <Tooltip formatter={(value) => [`$${value.toLocaleString()}`, 'Amount']} />
                       <Legend />
                       <Bar dataKey="amount" fill="#3b82f6" />
                     </BarChart>
@@ -332,36 +260,33 @@ const ReportsManagementUpdated = () => {
           <Card>
             <CardHeader>
               <CardTitle>Payment Status Summary</CardTitle>
-              <CardDescription>Detailed breakdown of all payments for this month</CardDescription>
+              <CardDescription>Detailed breakdown of all payments</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {payments.map((payment) => {
-                  const statusColor = payment.status === 'paid' ? 'text-success' :
-                                    payment.status === 'partial' ? 'text-warning' :
-                                    payment.status === 'pending' ? 'text-muted-foreground' :
-                                    'text-destructive';
-                  
-                  return (
-                    <div
-                      key={payment.id}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                    >
-                      <div>
-                        <h4 className="font-medium">{payment.full_name}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          M-Pesa: {payment.mpesa_code}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold">KES {payment.amount.toLocaleString()}</p>
-                        <p className={`text-sm ${statusColor}`}>
-                          {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
-                        </p>
-                      </div>
+                {payments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="flex items-center justify-between p-4 border rounded-lg"
+                  >
+                    <div>
+                      <h4 className="font-medium">{payment.full_name}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        M-Pesa: {payment.mpesa_code}
+                      </p>
                     </div>
-                  );
-                })}
+                    <div className="text-right">
+                      <p className="font-bold">${payment.amount}</p>
+                      <p className={`text-sm ${
+                        payment.status === 'paid' ? 'text-success' :
+                        payment.status === 'pending' ? 'text-warning' :
+                        'text-destructive'
+                      }`}>
+                        {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
 
                 {payments.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
@@ -372,7 +297,7 @@ const ReportsManagementUpdated = () => {
               </div>
             </CardContent>
           </Card>
-        </div>
+        </>
       )}
 
       {!selectedMonth && (
@@ -388,4 +313,4 @@ const ReportsManagementUpdated = () => {
   );
 };
 
-export default ReportsManagementUpdated;
+export default ReportsManagement;
