@@ -20,7 +20,9 @@ interface TenantProfile {
   status: string;
   unit?: {
     unit_number: string;
-    monthly_rent: number;
+    rent_amount: number;
+    lease_start_date: string;
+    lease_end_date: string;
   };
 }
 
@@ -84,24 +86,30 @@ export default function TenantDashboardNew() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Try different possible column names for user association
+      // Fetch profile first
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select(`
-          *,
-          unit:units(unit_number, monthly_rent)
-        `)
-        .eq('id', user.id)  
+        .select('*')
+        .eq('id', user.id)
         .single();
 
       console.log('Profile fetch result:', { profileData, profileError });
 
       if (profileData) {
-        setProfile(profileData);
+        // Fetch the unit assigned to this tenant
+        const { data: unitData } = await supabase
+          .from('units')
+          .select('*')
+          .eq('tenant_id', profileData.id)
+          .single();
+
+        console.log('Unit data:', unitData);
+
+        setProfile({...profileData, unit: unitData});
         setPaymentForm(prev => ({
           ...prev,
           full_name: profileData.display_name,
-          unit_number: profileData.unit?.unit_number || ''
+          unit_number: unitData?.unit_number || ''
         }));
 
         // Keep your original billing months fetch
@@ -224,8 +232,11 @@ export default function TenantDashboardNew() {
           <div>
             <p><strong>Phone:</strong> {profile.phone}</p>
             <p><strong>Unit:</strong> {profile.unit?.unit_number || 'Not assigned'}</p>
-            {profile.unit?.monthly_rent && (
-              <p><strong>Monthly Rent:</strong> KES {profile.unit.monthly_rent.toLocaleString()}</p>
+            {profile.unit?.rent_amount && (
+              <p><strong>Monthly Rent:</strong> KES {profile.unit.rent_amount.toLocaleString()}</p>
+            )}
+            {profile.unit?.lease_start_date && profile.unit?.lease_end_date && (
+              <p><strong>Lease:</strong> {profile.unit.lease_start_date} to {profile.unit.lease_end_date}</p>
             )}
           </div>
         </CardContent>
