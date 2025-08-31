@@ -11,6 +11,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import TenantSettings from './TenantSettings';
 import PaymentStatusMessage from './PaymentStatusMessage';
+import ThemeToggle from './ThemeToggle';
+import ReceiptPDFGenerator from './ReceiptPDFGenerator';
+import InvoicePDFGenerator from './InvoicePDFGenerator';
 import { 
   AlertCircle, 
   CreditCard, 
@@ -24,7 +27,8 @@ import {
   Download,
   ExternalLink,
   History,
-  Zap
+  Zap,
+  FileText
 } from 'lucide-react';
 import { AlertTriangle } from 'lucide-react';
 
@@ -39,6 +43,7 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
   const [billingMonths, setBillingMonths] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
   const [tenantUnit, setTenantUnit] = useState<any>(null);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [paymentForm, setPaymentForm] = useState({
     full_name: '',
@@ -55,40 +60,58 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
     if (!profile?.id) return;
 
     try {
-      // Fetch tenant's unit
+      // Fetch tenant's unit assignment
       const { data: unitData, error: unitError } = await supabase
         .from('units')
         .select('*')
         .eq('tenant_id', profile.id)
         .single();
 
-      if (unitError && unitError.code !== 'PGRST116') {
-        console.error('Error fetching unit:', unitError);
-      } else {
-        setTenantUnit(unitData);
-      }
+      if (unitError && unitError.code !== 'PGRST116') throw unitError;
+      setTenantUnit(unitData);
 
       // Fetch billing months
       const { data: billingData, error: billingError } = await supabase
         .from('billing_months')
         .select('*')
+        .eq('is_active', true)
         .order('year', { ascending: false })
         .order('month', { ascending: false });
 
       if (billingError) throw billingError;
       setBillingMonths(billingData || []);
 
-      // Fetch tenant's payments
+      // Fetch payments for this tenant
       const { data: paymentsData, error: paymentsError } = await supabase
         .from('payments')
-        .select('*, billing_months(*)')
-        .eq('tenant_id', profile.id)
-        .order('created_at', { ascending: false });
+        .select(`
+          *,
+          billing_months (
+            month,
+            year
+          )
+        `)
+        .eq('tenant_id', profile.id);
 
       if (paymentsError) throw paymentsError;
       setPayments(paymentsData || []);
+      
+      // Fetch tenant's invoices
+      const { data: invoicesData, error: invoicesError } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          billing_months:billing_month_id (
+            month,
+            year,
+            created_at
+          )
+        `)
+        .eq('tenant_id', profile.id)
+        .order('generated_at', { ascending: false });
 
-      // Notifications are now handled by useNotifications hook
+      if (invoicesError) throw invoicesError;
+      setInvoices(invoicesData || []);
 
     } catch (error) {
       console.error('Error fetching tenant data:', error);
@@ -142,8 +165,6 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
       });
     }
   };
-
-  // markNotificationAsRead is now handled by useNotifications hook
 
   const getMonthName = (month: number) => {
     const months = [
@@ -264,6 +285,53 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
                 </p>
               </CardContent>
             </Card>
+
+            {/* Lease Documents Section */}
+            {profile?.lease_document_name && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Lease Documents</CardTitle>
+                  <CardDescription>
+                    View and download your lease documents
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <p className="font-medium">{profile.lease_document_name}</p>
+                      {profile.lease_document_size && (
+                        <p className="text-sm text-muted-foreground">
+                          Size: {(profile.lease_document_size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      )}
+                      {profile.lease_document_uploaded_at && (
+                        <p className="text-sm text-muted-foreground">
+                          Uploaded: {new Date(profile.lease_document_uploaded_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        if (profile?.lease_document_url) {
+                          // Create a temporary anchor element to trigger download
+                          const link = document.createElement('a');
+                          link.href = profile.lease_document_url;
+                          link.download = profile.lease_document_name || 'lease-agreement.pdf';
+                          link.target = '_blank';
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }
+                      }}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Quick Actions */}
             <Card>
@@ -420,112 +488,169 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
             <div className="text-center py-16">
               <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
               <h2 className="text-xl font-semibold mb-2">Feature Not Available</h2>
-              <p className="text-muted-foreground">Your account is pending approval. Payment history will be available once approved.</p>
+              <p className="text-muted-foreground">Your account is pending approval. You'll be able to view payment history once your account is approved.</p>
             </div>
           );
         }
 
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Payment History</CardTitle>
-              <CardDescription>View your past payment submissions</CardDescription>
-            </CardHeader>
-            <CardContent>
-      {payments.length > 0 ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  Payment History
+                </CardTitle>
+                <CardDescription>
+                  Track all your rent payments and receipts
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-4">
-                  {payments
-                    .sort((a, b) => {
-                      // Sort by year first, then by month (chronological order)
-                      if (a.billing_months.year !== b.billing_months.year) {
-                        return a.billing_months.year - b.billing_months.year;
-                      }
-                      return a.billing_months.month - b.billing_months.month;
-                    })
-                    .map((payment) => {
+                  {payments.map((payment) => {
                     const statusInfo = getPaymentStatusMessage(payment);
                     const StatusIcon = statusInfo.icon;
                     
                     return (
                       <div
                         key={payment.id}
-                        className="flex items-center justify-between p-4 border rounded-lg"
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                       >
-                        <div>
+                        <div className="flex-1">
                           <h4 className="font-medium">
-                            {getMonthName(payment.billing_months.month)} {payment.billing_months.year}
+                            {getMonthName(payment.billing_months?.month)} {payment.billing_months?.year}
                           </h4>
                           <p className="text-sm text-muted-foreground">
-                            Amount: KES {payment.amount} • M-Pesa: {payment.mpesa_code}
+                            Amount: KES {payment.amount.toLocaleString()} • M-Pesa: {payment.mpesa_code}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Submitted: {new Date(payment.created_at).toLocaleDateString()}
                           </p>
                         </div>
                         
-                        <div className="text-right">
-                          <Badge variant="outline" className={statusInfo.color}>
-                            <StatusIcon className="h-3 w-3 mr-1" />
+                        <div className="flex items-center space-x-3">
+                          <Badge className={`${statusInfo.color} flex items-center gap-1`}>
+                            <StatusIcon className="h-3 w-3" />
                             {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
                           </Badge>
+                          
+                          {payment.status === 'paid' && (
+                            <ReceiptPDFGenerator 
+                              receiptData={{
+                                tenantName: profile?.display_name || `${profile?.first_name} ${profile?.last_name}` || 'Tenant',
+                                unitNumber: tenantUnit?.unit_number || payment.unit_number || 'N/A',
+                                amount: tenantUnit?.rent_amount || payment.amount,
+                                receiptNumber: `RCP-${payment.id.slice(0, 8)}`,
+                                paymentMethod: 'Mpesa'
+                              }}
+                              disabled={false}
+                            />
+                          )}
                         </div>
                       </div>
                     );
                   })}
+                  
+                  {payments.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <History className="h-8 w-8 mx-auto mb-2" />
+                      <p>No payment history yet</p>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Clock className="h-8 w-8 mx-auto mb-2" />
-                  <p className="text-sm">No payment history available</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         );
 
       case 'notifications':
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Notifications</CardTitle>
-              <CardDescription>Messages and updates from property management</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {notifications.length > 0 ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Bell className="h-5 w-5" />
+                  Notifications
+                </CardTitle>
+                <CardDescription>
+                  Important updates and invoice downloads
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-4">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                        notification.read ? 'bg-muted/50' : 'bg-primary/5 border-primary/20'
-                      }`}
-                      onClick={() => !notification.read && markAsRead(notification.id)}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <p className={`text-sm ${notification.read ? 'text-muted-foreground' : 'text-foreground'}`}>
-                            {notification.message}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {new Date(notification.created_at).toLocaleDateString()} at {new Date(notification.created_at).toLocaleTimeString()}
-                          </p>
+                  {notifications.map((notification) => {
+                    // Check if this is an invoice notification
+                    const isInvoiceNotification = notification.message.includes('download your invoice');
+                    
+                    return (
+                      <div
+                        key={notification.id}
+                        className={`p-4 rounded-lg border transition-colors ${
+                          notification.read 
+                            ? 'bg-muted/50 border-muted' 
+                            : 'bg-primary/10 border-primary/20'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="text-sm">{notification.message}</p>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              {new Date(notification.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {!notification.read && (
+                              <Badge variant="default" className="text-xs">
+                                New
+                              </Badge>
+                            )}
+                            {isInvoiceNotification && (
+                              <>
+                                {invoices
+                                  .filter(invoice => {
+                                    const invoiceMonth = getMonthName(invoice.billing_months?.month || 1);
+                                    const invoiceYear = invoice.billing_months?.year || new Date().getFullYear();
+                                    return notification.message.includes(`${invoiceMonth} ${invoiceYear}`);
+                                  })
+                                  .map(invoice => (
+                                    <InvoicePDFGenerator 
+                                      key={invoice.id}
+                                      invoiceData={{
+                                        tenantName: profile?.display_name || `${profile?.first_name} ${profile?.last_name}` || 'Tenant',
+                                        unitNumber: invoice.unit_number,
+                                        amount: invoice.amount,
+                                        billingMonth: getMonthName(invoice.billing_months?.month || 1),
+                                        billingYear: invoice.billing_months?.year || new Date().getFullYear(),
+                                        dateCreated: new Date(invoice.billing_months?.created_at || invoice.generated_at).toLocaleDateString()
+                                      }}
+                                      disabled={false}
+                                    />
+                                  ))}
+                              </>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => markAsRead(notification.id)}
+                            >
+                              {notification.read ? 'Read' : 'Mark as Read'}
+                            </Button>
+                          </div>
                         </div>
-                        
-                        {!notification.read && (
-                          <div className="w-2 h-2 bg-primary rounded-full mt-2"></div>
-                        )}
                       </div>
+                    );
+                  })}
+                  
+                  {notifications.length === 0 && (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Bell className="h-8 w-8 mx-auto mb-2" />
+                      <p>No notifications yet</p>
                     </div>
-                  ))}
+                  )}
                 </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Bell className="h-8 w-8 mx-auto mb-2" />
-                  <p className="text-sm">No notifications at this time</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         );
 
       case 'settings':
@@ -536,7 +661,43 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
     }
   };
 
-  return <div className="space-y-6">{renderTabContent()}</div>;
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">
+            Welcome{profile?.first_name ? `, ${profile.first_name}` : ''}!
+          </h1>
+          <p className="text-muted-foreground">
+            {isPending 
+              ? 'Your account is pending approval'
+              : isSuspended
+              ? 'Your account has been suspended'
+              : 'Manage your tenancy with ease'
+            }
+          </p>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <ThemeToggle />
+          {!isPending && !isSuspended && notifications.filter(n => !n.read).length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => markAllAsRead()}
+              className="flex items-center gap-2"
+            >
+              <Bell className="h-4 w-4" />
+              Mark All Read ({notifications.filter(n => !n.read).length})
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {renderTabContent()}
+    </div>
+  );
 };
 
 export default TenantDashboardNew;
