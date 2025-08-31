@@ -80,10 +80,9 @@ export default function TenantDashboardNew() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Use your ORIGINAL tenant profile fetch logic here
-      // Keep whatever query structure was working before
+      // Fetch from the correct 'profiles' table
       const { data: profileData } = await supabase
-        .from('tenant_profiles')
+        .from('profiles')
         .select('*')
         .eq('user_id', user.id)
         .single();
@@ -114,7 +113,7 @@ export default function TenantDashboardNew() {
 
         setPayments(paymentsData || []);
 
-        // NEW: Add receipts fetch (this is the only new part)
+        // NEW: Add receipts fetch from correct table
         const { data: receiptsData } = await supabase
           .from('receipts')
           .select(`
