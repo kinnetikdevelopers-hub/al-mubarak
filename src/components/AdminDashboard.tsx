@@ -6,6 +6,7 @@ import BillingManagementUpdated from './admin/BillingManagementUpdated';
 import ReportsManagementUpdated from './admin/ReportsManagementUpdated';
 import RemindersManagement from './admin/RemindersManagement';
 import SettingsManagement from './admin/SettingsManagement';
+import ThemeToggle from './ThemeToggle';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -105,7 +106,7 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
         fetchStats();
       })
       .subscribe();
-
+    
     const paymentsChannel = supabase
       .channel('payments-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
@@ -143,7 +144,6 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
                   <p className="text-xs text-muted-foreground">Property units</p>
                 </CardContent>
               </Card>
-              
               <Card className="shadow-sm hover:scale-105 transition-all duration-300 hover:shadow-lg">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Active Tenants</CardTitle>
@@ -153,7 +153,8 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
                   <div className="text-2xl font-bold">{stats.activeTenants}</div>
                   <p className="text-xs text-muted-foreground">Approved tenants</p>
                 </CardContent>
-              </Card>        
+              </Card>
+          
               <Card className="shadow-sm hover:scale-105 transition-all duration-300 hover:shadow-lg">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">Pending Approvals</CardTitle>
@@ -245,7 +246,14 @@ const AdminDashboard = ({ activeTab, onTabChange }: AdminDashboardProps) => {
     }
   };
 
-  return <div className="space-y-6">{renderTabContent()}</div>;
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <ThemeToggle />
+      </div>
+      {renderTabContent()}
+    </div>
+  );
 };
 
 export default AdminDashboard;
