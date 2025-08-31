@@ -45,12 +45,15 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
   const [tenantUnit, setTenantUnit] = useState<any>(null);
   const [invoices, setInvoices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // FIXED: Only one paymentForm state declaration with phone_number included
   const [paymentForm, setPaymentForm] = useState({
     full_name: '',
     amount: '',
-    mpesa_code: '',
+    phone_number: '',
     unit_number: ''
   });
+  
   const { toast } = useToast();
 
   const isPending = profile?.status === 'pending';
@@ -124,43 +127,49 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
     fetchTenantData();
   }, [profile?.id]);
 
+  // FIXED: Updated submitPayment function for M-Pesa STK push
   const submitPayment = async (billingMonthId: string) => {
-    if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.mpesa_code || !paymentForm.unit_number) {
+    if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.phone_number || !paymentForm.unit_number) {
       toast({
         title: "Error",
-        description: "Please fill in all fields including unit number",
+        description: "Please fill in all fields including phone number",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from('payments')
-        .insert([{
+      const response = await fetch('/api/mpesa/initiate-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           tenant_id: profile?.id,
           billing_month_id: billingMonthId,
           full_name: paymentForm.full_name,
-          amount: parseFloat(paymentForm.amount),
-          mpesa_code: paymentForm.mpesa_code,
           unit_number: paymentForm.unit_number,
-          status: 'pending'
-        }]);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Your payment is waiting for admin approval. Kindly be patient.",
+          phone_number: paymentForm.phone_number,
+          amount: parseFloat(paymentForm.amount)
+        })
       });
 
-      setPaymentForm({ full_name: '', amount: '', mpesa_code: '', unit_number: '' });
-      fetchTenantData(); // Refresh data
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: "Payment Request Sent!",
+          description: `Check your phone for M-Pesa prompt. Request ID: ${data.data.CheckoutRequestID}`,
+        });
+
+        setPaymentForm({ full_name: '', amount: '', phone_number: '', unit_number: '' });
+        fetchTenantData(); // Refresh data
+      } else {
+        throw new Error(data.error);
+      }
     } catch (error) {
-      console.error('Error submitting payment:', error);
+      console.error('Error initiating payment:', error);
       toast({
         title: "Error",
-        description: "Failed to submit payment",
+        description: "Failed to initiate payment",
         variant: "destructive",
       });
     }
@@ -434,6 +443,18 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
                               required
                             />
                           </div>
+
+                          <div>
+                            <Label htmlFor={`phone-${month.id}`}>Phone Number *</Label>
+                            <Input
+                              id={`phone-${month.id}`}
+                              type="tel"
+                              value={paymentForm.phone_number}
+                              onChange={(e) => setPaymentForm({...paymentForm, phone_number: e.target.value})}
+                              placeholder="254712345678"
+                              required
+                            />
+                          </div>
                           
                           <div>
                             <Label htmlFor={`amount-${month.id}`}>Amount</Label>
@@ -446,21 +467,11 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
                             />
                           </div>
                           
-                          <div>
-                            <Label htmlFor={`mpesa-${month.id}`}>M-Pesa Code</Label>
-                            <Input
-                              id={`mpesa-${month.id}`}
-                              value={paymentForm.mpesa_code}
-                              onChange={(e) => setPaymentForm({...paymentForm, mpesa_code: e.target.value})}
-                              placeholder="Enter M-Pesa transaction code"
-                            />
-                          </div>
-                          
                           <Button 
                             onClick={() => submitPayment(month.id)} 
                             className="w-full"
                           >
-                            Submit Payment
+                            Pay with M-Pesa
                           </Button>
                         </div>
                       )}
@@ -521,7 +532,7 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
                             {getMonthName(payment.billing_months?.month)} {payment.billing_months?.year}
                           </h4>
                           <p className="text-sm text-muted-foreground">
-                            Amount: KES {payment.amount.toLocaleString()} • M-Pesa: {payment.mpesa_code}
+                            Amount: KES {payment.amount.toLocaleString()} • Phone: {payment.phone_number || payment.mpesa_code}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             Submitted: {new Date(payment.created_at).toLocaleDateString()}
