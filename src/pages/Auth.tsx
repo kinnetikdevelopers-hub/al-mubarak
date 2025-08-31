@@ -158,7 +158,7 @@ if (initializing) {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <Building2 className="h-10 w-10 mx-auto mb-2 text-primary" />
-          <CardTitle className="text-2xl">Al Mubarak</CardTitle>
+          <CardTitle className="text-2xl">Green Estate</CardTitle>
           <CardDescription>
             Manage your properties with ease
           </CardDescription>
@@ -255,21 +255,8 @@ if (initializing) {
                     placeholder="Enter your phone number"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    required
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="signup-idnumber">ID Number</Label>
-                  <Input
-                    id="signup-idnumber"
-                    name="idNumber"
-                    type="text"
-                    placeholder="Enter your ID number"
-                    value={idNumber}
-                    onChange={(e) => setIdNumber(e.target.value)}
-                    required
-                  />  
-                </div>                
                 <div className="space-y-2">
                   <Label htmlFor="signup-password">Password</Label>
                   <Input
