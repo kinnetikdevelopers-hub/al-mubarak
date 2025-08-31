@@ -1,12 +1,16 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 
-// Your M-Pesa configuration
-const consumerKey = "your_consumer_key";
-const consumerSecret = "your_consumer_secret";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Your existing M-Pesa credentials
+const consumerKey = "2BJZ8GummAHAMnsqYy2Fq2VfSBO6kuNLMobAE86piHUq8ulI";
+const consumerSecret = "hCoBeAmOkAAChUZfaZCb3UOvYxsoe8rG1JknaOM53FsShxPh8YN24oHY0tDa5rpp";
 const shortcode = "174379";
-const passkey = "your_passkey";
+const passkey = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
 const baseURL = "https://sandbox.safaricom.co.ke";
 
 async function getToken() {
@@ -26,12 +30,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const { tenant_id, billing_month_id, full_name, unit_number, phone_number, amount } = req.body;
 
   try {
-    // Generate M-Pesa credentials
     const timestamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, -3);
     const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString("base64");
     const token = await getToken();
 
-    // STK Push request
     const stkData = {
       BusinessShortCode: shortcode,
       Password: password,
@@ -41,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       PartyA: phone_number,
       PartyB: shortcode,
       PhoneNumber: phone_number,
-      CallBackURL: `${process.env.NEXT_PUBLIC_BASE_URL}/api/mpesa/callback`,
+      CallBackURL: `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/mpesa/callback`,
       AccountReference: `UNIT-${unit_number}`,
       TransactionDesc: `Rent payment for unit ${unit_number}`
     };
@@ -52,7 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
-    // Store payment in your existing payments table
+    // Store in your existing payments table
     const { data: payment, error } = await supabase
       .from('payments')
       .insert([{
@@ -73,7 +75,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     res.json({
       success: true,
-      message: "Payment request sent!",
+      message: "Payment request sent successfully!",
       data: response.data,
       payment_id: payment.id
     });
