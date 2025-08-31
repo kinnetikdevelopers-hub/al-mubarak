@@ -148,7 +148,7 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
       };
 
       // Use mockPayment for local testing, initiatePayment for production
-      const data = await mockPayment(paymentData);
+      const data = await initiatePayment(paymentData);
       // const data = await initiatePayment(paymentData); // Use this for real M-Pesa
 
       if (data.success) {
