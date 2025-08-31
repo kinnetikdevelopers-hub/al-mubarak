@@ -1,131 +1,135 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useNotifications } from '@/hooks/useNotifications';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import TenantSettings from './TenantSettings';
-import PaymentStatusMessage from './PaymentStatusMessage';
-import ThemeToggle from './ThemeToggle';
-import ReceiptPDFGenerator from './ReceiptPDFGenerator';
-import InvoicePDFGenerator from './InvoicePDFGenerator';
+import { Calendar, DollarSign, FileText, Phone, CreditCard, Receipt as ReceiptIcon } from 'lucide-react';
 import { initiatePayment, mockPayment } from '@/pages/api/mpesa';
-import { 
-  AlertCircle, 
-  CreditCard, 
-  DollarSign, 
-  Calendar, 
-  Clock,
-  Bell,
-  User,
-  CheckCircle,
-  XCircle,
-  Download,
-  ExternalLink,
-  History,
-  Zap,
-  FileText
-} from 'lucide-react';
-import { AlertTriangle } from 'lucide-react';
+import ReceiptPDFGenerator from '@/components/ReceiptPDFGenerator';
 
-interface TenantDashboardNewProps {
-  activeTab: string;
-  onTabChange?: (tab: string) => void;
+interface TenantProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone_number: string;
+  unit_number: string;
+  lease_start: string;
+  lease_end: string;
+  monthly_rent: number;
 }
 
-const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps) => {
-  const { profile } = useAuth();
-  const { notifications, markAsRead, markAllAsRead } = useNotifications();
-  const [billingMonths, setBillingMonths] = useState<any[]>([]);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [tenantUnit, setTenantUnit] = useState<any>(null);
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  
+interface BillingMonth {
+  id: string;
+  month: string;
+  year: number;
+  due_date: string;
+  status: 'pending' | 'paid' | 'overdue';
+  amount: number;
+}
+
+interface Payment {
+  id: string;
+  amount: number;
+  status: 'pending' | 'paid' | 'failed';
+  created_at: string;
+  mpesa_code?: string;
+  mpesa_receipt_number?: string;
+  phone_number?: string;
+  full_name: string;
+  unit_number: string;
+}
+
+interface PaymentReceipt {
+  id: string;
+  receipt_number: string;
+  amount: number;
+  unit_number: string;
+  created_at: string;
+  payment: {
+    full_name: string;
+    phone_number: string;
+    mpesa_receipt_number: string;
+    transaction_date: string;
+  };
+}
+
+export default function TenantDashboardNew() {
+  const [profile, setProfile] = useState<TenantProfile | null>(null);
+  const [billingMonths, setBillingMonths] = useState<BillingMonth[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
   const [paymentForm, setPaymentForm] = useState({
     full_name: '',
     amount: '',
     phone_number: '',
     unit_number: ''
   });
-  
+  const [selectedReceipt, setSelectedReceipt] = useState<PaymentReceipt | null>(null);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
-
-  const isPending = profile?.status === 'pending';
-  const isSuspended = profile?.status === 'suspended';
-
-  const fetchTenantData = async () => {
-    if (!profile?.id) return;
-
-    try {
-      // Fetch tenant's unit assignment
-      const { data: unitData, error: unitError } = await supabase
-        .from('units')
-        .select('*')
-        .eq('tenant_id', profile.id)
-        .single();
-
-      if (unitError && unitError.code !== 'PGRST116') throw unitError;
-      setTenantUnit(unitData);
-
-      // Fetch billing months
-      const { data: billingData, error: billingError } = await supabase
-        .from('billing_months')
-        .select('*')
-        .eq('is_active', true)
-        .order('year', { ascending: false })
-        .order('month', { ascending: false });
-
-      if (billingError) throw billingError;
-      setBillingMonths(billingData || []);
-
-      // Fetch payments for this tenant
-      const { data: paymentsData, error: paymentsError } = await supabase
-        .from('payments')
-        .select(`
-          *,
-          billing_months (
-            month,
-            year
-          )
-        `)
-        .eq('tenant_id', profile.id);
-
-      if (paymentsError) throw paymentsError;
-      setPayments(paymentsData || []);
-      
-      // Fetch tenant's invoices
-      const { data: invoicesData, error: invoicesError } = await supabase
-        .from('invoices')
-        .select(`
-          *,
-          billing_months:billing_month_id (
-            month,
-            year,
-            created_at
-          )
-        `)
-        .eq('tenant_id', profile.id)
-        .order('generated_at', { ascending: false });
-
-      if (invoicesError) throw invoicesError;
-      setInvoices(invoicesData || []);
-
-    } catch (error) {
-      console.error('Error fetching tenant data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   useEffect(() => {
     fetchTenantData();
-  }, [profile?.id]);
+  }, []);
+
+  const fetchTenantData = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Fetch tenant profile
+      const { data: profileData } = await supabase
+        .from('tenant_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (profileData) {
+        setProfile(profileData);
+        setPaymentForm(prev => ({
+          ...prev,
+          full_name: profileData.full_name,
+          unit_number: profileData.unit_number
+        }));
+
+        // Fetch billing months
+        const { data: billingData } = await supabase
+          .from('billing_months')
+          .select('*')
+          .order('year', { ascending: false })
+          .order('month', { ascending: false });
+
+        setBillingMonths(billingData || []);
+
+        // Fetch payments
+        const { data: paymentsData } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('tenant_id', profileData.id)
+          .order('created_at', { ascending: false });
+
+        setPayments(paymentsData || []);
+
+        // Fetch receipts
+        const { data: receiptsData } = await supabase
+          .from('receipts')
+          .select(`
+            *,
+            payment:payments(full_name, phone_number, mpesa_receipt_number, transaction_date)
+          `)
+          .eq('tenant_id', profileData.id)
+          .order('created_at', { ascending: false });
+
+        setReceipts(receiptsData || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const submitPayment = async (billingMonthId: string) => {
     if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.phone_number || !paymentForm.unit_number) {
@@ -147,16 +151,14 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
         amount: parseFloat(paymentForm.amount)
       };
 
-      // Use mockPayment for local testing, initiatePayment for production
+      // Use initiatePayment for real M-Pesa STK push
       const data = await initiatePayment(paymentData);
-      // const data = await initiatePayment(paymentData); // Use this for real M-Pesa
-
+      
       if (data.success) {
         toast({
-          title: "Payment Successful!",
-          description: `Mock payment completed. Payment ID: ${data.payment_id}`,
+          title: "Payment Request Sent!",
+          description: "Please check your phone for M-Pesa STK push prompt",
         });
-
         setPaymentForm({ full_name: '', amount: '', phone_number: '', unit_number: '' });
         fetchTenantData(); // Refresh data
       } else {
@@ -166,546 +168,209 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
       console.error('Error processing payment:', error);
       toast({
         title: "Error",
-        description: "Failed to process payment",
+        description: "Failed to initiate payment. Please try again.",
         variant: "destructive",
       });
     }
   };
 
-  const getMonthName = (month: number) => {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months[month - 1];
-  };
-
-  const getPaymentStatusMessage = (payment: any) => {
-    switch (payment.status) {
-      case 'paid':
-        return {
-          message: "Your payment has been approved by the admin ✅",
-          color: "text-success",
-          icon: CheckCircle,
-          canDownload: true
-        };
-      case 'partial':
-        return {
-          message: "Your payment has been recorded as partial. Kindly pay the full rent amount.",
-          color: "text-warning",
-          icon: AlertTriangle,
-          canDownload: false
-        };
-      case 'rejected':
-        return {
-          message: "Your payment has been rejected by the manager. Kindly contact the manager.",
-          color: "text-destructive",
-          icon: XCircle,
-          canDownload: false
-        };
-      case 'pending':
-        return {
-          message: "Your payment is waiting for admin approval. Kindly be patient.",
-          color: "text-blue-600",
-          icon: Clock,
-          canDownload: false
-        };
-      default:
-        return {
-          message: "Payment status unknown",
-          color: "text-muted-foreground",
-          icon: AlertCircle,
-          canDownload: false
-        };
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'paid': return 'bg-green-100 text-green-800';
+      case 'pending': return 'bg-yellow-100 text-yellow-800';
+      case 'overdue': return 'bg-red-100 text-red-800';
+      case 'failed': return 'bg-gray-100 text-gray-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  if (loading) {
+    return <div className="flex justify-center items-center h-64">Loading...</div>;
   }
 
-  const renderTabContent = () => {
-    // Show suspended message for all tabs if suspended
-    if (isSuspended) {
-      return (
-        <div className="text-center py-16">
-          <XCircle className="h-16 w-16 mx-auto mb-4 text-destructive" />
-          <h2 className="text-2xl font-bold mb-4 text-destructive">Account Suspended</h2>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Your account has been suspended. Please contact the administrator for assistance.
-          </p>
-        </div>
-      );
-    }
-
-    switch (activeTab) {
-      case 'dashboard':
-        return (
-          <div className="space-y-6">
-            {isPending && (
-              <Alert className="border-warning bg-warning/10">
-                <AlertCircle className="h-4 w-4 text-warning" />
-                <AlertDescription className="text-warning-foreground">
-                  <strong>Account Pending Approval:</strong> Your account is being reviewed. 
-                  You'll receive full access once approved by the property manager.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {!isPending && (
-              <div className="mb-6">
-                <Alert className="border-success bg-success/10">
-                  <CheckCircle className="h-4 w-4 text-success" />
-                  <AlertDescription className="text-success-foreground">
-                    <strong>Account Approved:</strong> Welcome to your tenant portal! 
-                    You now have full access to all features.
-                  </AlertDescription>
-                </Alert>
-              </div>
-            )}
-
-            {/* Monthly Rent Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Monthly Rent
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">
-                  KES {tenantUnit?.rent_amount || 0}
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {tenantUnit ? `Unit ${tenantUnit.unit_number}` : 'No unit assigned'}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Lease Documents Section */}
-            {profile?.lease_document_name && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Lease Documents</CardTitle>
-                  <CardDescription>
-                    View and download your lease documents
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{profile.lease_document_name}</p>
-                      {profile.lease_document_size && (
-                        <p className="text-sm text-muted-foreground">
-                          Size: {(profile.lease_document_size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      )}
-                      {profile.lease_document_uploaded_at && (
-                        <p className="text-sm text-muted-foreground">
-                          Uploaded: {new Date(profile.lease_document_uploaded_at).toLocaleDateString()}
-                        </p>
-                      )}
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => {
-                        if (profile?.lease_document_url) {
-                          // Create a temporary anchor element to trigger download
-                          const link = document.createElement('a');
-                          link.href = profile.lease_document_url;
-                          link.download = profile.lease_document_name || 'lease-agreement.pdf';
-                          link.target = '_blank';
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                        }
-                      }}
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Quick Actions */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5" />
-                  Quick Actions
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Button 
-                  className="w-full justify-start gap-2" 
-                  variant="outline"
-                  onClick={() => onTabChange?.('pay-rent')}
-                  disabled={isPending}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  Pay Rent
-                  {isPending && <span className="ml-auto text-xs">(Pending)</span>}
-                </Button>
-                <Button 
-                  className="w-full justify-start gap-2" 
-                  variant="outline"
-                  onClick={() => onTabChange?.('history')}
-                  disabled={isPending}
-                >
-                  <History className="h-4 w-4" />
-                  Payment History
-                  {isPending && <span className="ml-auto text-xs">(Pending)</span>}
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case 'pay-rent':
-        if (isPending) {
-          return (
-            <div className="text-center py-16">
-              <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-              <h2 className="text-xl font-semibold mb-2">Feature Not Available</h2>
-              <p className="text-muted-foreground">Your account is pending approval. You'll be able to make payments once your account is approved.</p>
-            </div>
-          );
-        }
-
-        return (
-          <div className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {billingMonths.map((month) => {
-                const existingPayment = payments.find(p => p.billing_month_id === month.id);
-                const statusInfo = existingPayment ? getPaymentStatusMessage(existingPayment) : null;
-                
-                return (
-                  <Card key={month.id} className="cursor-pointer hover:shadow-lg transition-all">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Calendar className="h-5 w-5 text-primary" />
-                        {getMonthName(month.month)} {month.year}
-                      </CardTitle>
-                      {month.payment_link && (
-                        <a 
-                          href={month.payment_link} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-sm text-primary hover:underline flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-3 w-3" />
-                          Payment Link
-                        </a>
-                      )}
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {existingPayment ? (
-                        <PaymentStatusMessage 
-                          status={existingPayment.status}
-                          billingMonth={`${getMonthName(month.month)} ${month.year}`}
-                          rentAmount={tenantUnit?.rent_amount}
-                          paidAmount={existingPayment.amount}
-                        />
-                      ) : (
-                        <div className="space-y-3">
-                          <div>
-                            <Label htmlFor={`name-${month.id}`}>Full Name</Label>
-                            <Input
-                              id={`name-${month.id}`}
-                              value={paymentForm.full_name}
-                              onChange={(e) => setPaymentForm({...paymentForm, full_name: e.target.value})}
-                              placeholder="Enter your full name"
-                            />
-                          </div>
-
-                          <div>
-                            <Label htmlFor={`unit-${month.id}`}>Unit Number *</Label>
-                            <Input
-                              id={`unit-${month.id}`}
-                              value={paymentForm.unit_number}
-                              onChange={(e) => setPaymentForm({...paymentForm, unit_number: e.target.value})}
-                              placeholder="Enter your unit number"
-                              required
-                            />
-                          </div>
-
-                          <div>
-                            <Label htmlFor={`phone-${month.id}`}>Phone Number *</Label>
-                            <Input
-                              id={`phone-${month.id}`}
-                              type="tel"
-                              value={paymentForm.phone_number}
-                              onChange={(e) => setPaymentForm({...paymentForm, phone_number: e.target.value})}
-                              placeholder="254712345678"
-                              required
-                            />
-                          </div>
-                          
-                          <div>
-                            <Label htmlFor={`amount-${month.id}`}>Amount</Label>
-                            <Input
-                              id={`amount-${month.id}`}
-                              type="number"
-                              value={paymentForm.amount}
-                              onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})}
-                              placeholder={`${tenantUnit?.rent_amount || 0}`}
-                            />
-                          </div>
-                          
-                          <Button 
-                            onClick={() => submitPayment(month.id)} 
-                            className="w-full"
-                          >
-                            Pay with M-Pesa
-                          </Button>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-
-            {billingMonths.length === 0 && (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <Calendar className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-lg font-semibold mb-2">No Billing Months Available</h3>
-                  <p className="text-muted-foreground">The admin hasn't created any billing months yet.</p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        );
-
-      case 'history':
-        if (isPending) {
-          return (
-            <div className="text-center py-16">
-              <AlertCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-              <h2 className="text-xl font-semibold mb-2">Feature Not Available</h2>
-              <p className="text-muted-foreground">Your account is pending approval. You'll be able to view payment history once your account is approved.</p>
-            </div>
-          );
-        }
-
-        return (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5" />
-                  Payment History
-                </CardTitle>
-                <CardDescription>
-                  Track all your rent payments and receipts
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {payments.map((payment) => {
-                    const statusInfo = getPaymentStatusMessage(payment);
-                    const StatusIcon = statusInfo.icon;
-                    
-                    return (
-                      <div
-                        key={payment.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="flex-1">
-                          <h4 className="font-medium">
-                            {getMonthName(payment.billing_months?.month)} {payment.billing_months?.year}
-                          </h4>
-                          <p className="text-sm text-muted-foreground">
-                            Amount: KES {payment.amount.toLocaleString()} • Phone: {payment.phone_number || payment.mpesa_code}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Submitted: {new Date(payment.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
-                        
-                        <div className="flex items-center space-x-3">
-                          <Badge className={`${statusInfo.color} flex items-center gap-1`}>
-                            <StatusIcon className="h-3 w-3" />
-                            {payment.status.charAt(0).toUpperCase() + payment.status.slice(1)}
-                          </Badge>
-                          
-                          {payment.status === 'paid' && (
-                            <ReceiptPDFGenerator 
-                              receiptData={{
-                                tenantName: profile?.display_name || `${profile?.first_name} ${profile?.last_name}` || 'Tenant',
-                                unitNumber: tenantUnit?.unit_number || payment.unit_number || 'N/A',
-                                amount: tenantUnit?.rent_amount || payment.amount,
-                                receiptNumber: `RCP-${payment.id.slice(0, 8)}`,
-                                paymentMethod: 'Mpesa'
-                              }}
-                              disabled={false}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {payments.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <History className="h-8 w-8 mx-auto mb-2" />
-                      <p>No payment history yet</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case 'notifications':
-        return (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bell className="h-5 w-5" />
-                  Notifications
-                </CardTitle>
-                <CardDescription>
-                  Important updates and invoice downloads
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {notifications.map((notification) => {
-                    // Check if this is an invoice notification
-                    const isInvoiceNotification = notification.message.includes('download your invoice');
-                    
-                    return (
-                      <div
-                        key={notification.id}
-                        className={`p-4 rounded-lg border transition-colors ${
-                          notification.read 
-                            ? 'bg-muted/50 border-muted' 
-                            : 'bg-primary/10 border-primary/20'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <p className="text-sm">{notification.message}</p>
-                            <p className="text-xs text-muted-foreground mt-2">
-                              {new Date(notification.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {!notification.read && (
-                              <Badge variant="default" className="text-xs">
-                                New
-                              </Badge>
-                            )}
-                            {isInvoiceNotification && (
-                              <>
-                                {invoices
-                                  .filter(invoice => {
-                                    const invoiceMonth = getMonthName(invoice.billing_months?.month || 1);
-                                    const invoiceYear = invoice.billing_months?.year || new Date().getFullYear();
-                                    return notification.message.includes(`${invoiceMonth} ${invoiceYear}`);
-                                  })
-                                  .map(invoice => (
-                                    <InvoicePDFGenerator 
-                                      key={invoice.id}
-                                      invoiceData={{
-                                        tenantName: profile?.display_name || `${profile?.first_name} ${profile?.last_name}` || 'Tenant',
-                                        unitNumber: invoice.unit_number,
-                                        amount: invoice.amount,
-                                        billingMonth: getMonthName(invoice.billing_months?.month || 1),
-                                        billingYear: invoice.billing_months?.year || new Date().getFullYear(),
-                                        dateCreated: new Date(invoice.billing_months?.created_at || invoice.generated_at).toLocaleDateString()
-                                      }}
-                                      disabled={false}
-                                    />
-                                  ))}
-                              </>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => markAsRead(notification.id)}
-                            >
-                              {notification.read ? 'Read' : 'Mark as Read'}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  {notifications.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Bell className="h-8 w-8 mx-auto mb-2" />
-                      <p>No notifications yet</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        );
-
-      case 'settings':
-        return <TenantSettings />;
-
-      default:
-        return null;
-    }
-  };
+  if (!profile) {
+    return <div className="text-center p-8">No tenant profile found.</div>;
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">
-            Welcome{profile?.first_name ? `, ${profile.first_name}` : ''}!
-          </h1>
-          <p className="text-muted-foreground">
-            {isPending 
-              ? 'Your account is pending approval'
-              : isSuspended
-              ? 'Your account has been suspended'
-              : 'Manage your tenancy with ease'
-            }
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          <ThemeToggle />
-          {!isPending && !isSuspended && notifications.filter(n => !n.read).length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => markAllAsRead()}
-              className="flex items-center gap-2"
-            >
-              <Bell className="h-4 w-4" />
-              Mark All Read ({notifications.filter(n => !n.read).length})
-            </Button>
-          )}
-        </div>
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-800">Tenant Dashboard</h1>
+        <p className="text-gray-600 mt-2">Welcome back, {profile.full_name}</p>
       </div>
 
-      {renderTabContent()}
+      {/* Tenant Info */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Your Information</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <p><strong>Unit:</strong> {profile.unit_number}</p>
+            <p><strong>Email:</strong> {profile.email}</p>
+          </div>
+          <div>
+            <p><strong>Monthly Rent:</strong> KES {profile.monthly_rent?.toLocaleString()}</p>
+            <p><strong>Lease Period:</strong> {profile.lease_start} to {profile.lease_end}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pay Rent */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CreditCard className="h-5 w-5" />
+            Pay Rent - M-Pesa
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Input
+              placeholder="Full Name"
+              value={paymentForm.full_name}
+              onChange={(e) => setPaymentForm({...paymentForm, full_name: e.target.value})}
+            />
+            <Input
+              placeholder="Unit Number"
+              value={paymentForm.unit_number}
+              onChange={(e) => setPaymentForm({...paymentForm, unit_number: e.target.value})}
+            />
+            <Input
+              placeholder="Phone Number (254...)"
+              value={paymentForm.phone_number}
+              onChange={(e) => setPaymentForm({...paymentForm, phone_number: e.target.value})}
+            />
+            <Input
+              type="number"
+              placeholder="Amount (KES)"
+              value={paymentForm.amount}
+              onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})}
+            />
+          </div>
+          
+          {billingMonths.length > 0 && (
+            <div className="mt-4">
+              <h4 className="font-semibold mb-2">Select Billing Month:</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {billingMonths.map((month) => (
+                  <Button
+                    key={month.id}
+                    variant={month.status === 'paid' ? 'secondary' : 'outline'}
+                    className="p-3 h-auto flex flex-col items-start"
+                    onClick={() => {
+                      setPaymentForm({...paymentForm, amount: month.amount.toString()});
+                      submitPayment(month.id);
+                    }}
+                    disabled={month.status === 'paid'}
+                  >
+                    <span className="font-medium">{month.month} {month.year}</span>
+                    <span className="text-sm">KES {month.amount.toLocaleString()}</span>
+                    <Badge className={getStatusColor(month.status)}>
+                      {month.status}
+                    </Badge>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Payment History */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5" />
+            Payment History
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {payments.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No payments found.</p>
+          ) : (
+            <div className="space-y-3">
+              {payments.map((payment) => (
+                <div key={payment.id} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">KES {payment.amount.toLocaleString()}</p>
+                    <p className="text-sm text-gray-600">{new Date(payment.created_at).toLocaleDateString()}</p>
+                    {payment.mpesa_receipt_number && (
+                      <p className="text-xs text-green-600 font-mono">M-Pesa: {payment.mpesa_receipt_number}</p>
+                    )}
+                  </div>
+                  <Badge className={getStatusColor(payment.status)}>
+                    {payment.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Receipts */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ReceiptIcon className="h-5 w-5" />
+            Your Receipts
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {receipts.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No receipts available.</p>
+          ) : (
+            <div className="space-y-3">
+              {receipts.map((receipt) => (
+                <div key={receipt.id} className="flex justify-between items-center p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">Receipt #{receipt.receipt_number}</p>
+                    <p className="text-sm text-gray-600">KES {receipt.amount.toLocaleString()}</p>
+                    <p className="text-xs text-gray-500">{new Date(receipt.created_at).toLocaleDateString()}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedReceipt(receipt)}
+                  >
+                    <FileText className="h-4 w-4 mr-1" />
+                    View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Receipt Modal */}
+      {selectedReceipt && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Receipt Details</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedReceipt(null)}
+              >
+                ✕
+              </Button>
+            </div>
+            <ReceiptPDFGenerator
+              receiptData={{
+                tenantName: selectedReceipt.payment.full_name,
+                unitNumber: selectedReceipt.unit_number,
+                amount: selectedReceipt.amount,
+                receiptNumber: selectedReceipt.receipt_number,
+                paymentMethod: selectedReceipt.payment.mpesa_receipt_number ? 'M-Pesa' : 'Other'
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
-};
-
-export default TenantDashboardNew;
+}
