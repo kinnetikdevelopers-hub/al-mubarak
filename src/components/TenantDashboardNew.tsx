@@ -11,13 +11,17 @@ import ReceiptPDFGenerator from '@/components/ReceiptPDFGenerator';
 
 interface TenantProfile {
   id: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
   email: string;
-  phone_number: string;
-  unit_number: string;
-  lease_start: string;
-  lease_end: string;
-  monthly_rent: number;
+  phone: string;
+  display_name: string;
+  role: string;
+  status: string;
+  unit?: {
+    unit_number: string;
+    monthly_rent: number;
+  };
 }
 
 interface BillingMonth {
@@ -80,19 +84,24 @@ export default function TenantDashboardNew() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Fetch from the correct 'profiles' table
-      const { data: profileData } = await supabase
+      // Try different possible column names for user association
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
+        .select(`
+          *,
+          unit:units(unit_number, monthly_rent)
+        `)
+        .eq('id', user.id)  
         .single();
+
+      console.log('Profile fetch result:', { profileData, profileError });
 
       if (profileData) {
         setProfile(profileData);
         setPaymentForm(prev => ({
           ...prev,
-          full_name: profileData.full_name,
-          unit_number: profileData.unit_number
+          full_name: profileData.display_name,
+          unit_number: profileData.unit?.unit_number || ''
         }));
 
         // Keep your original billing months fetch
@@ -199,7 +208,7 @@ export default function TenantDashboardNew() {
       {/* Header */}
       <div className="text-center mb-8">
         <h1 className="text-3xl font-bold text-gray-800">Tenant Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome back, {profile.full_name}</p>
+        <p className="text-gray-600 mt-2">Welcome back, {profile.display_name}</p>
       </div>
 
       {/* Tenant Info */}
@@ -209,12 +218,15 @@ export default function TenantDashboardNew() {
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <p><strong>Unit:</strong> {profile.unit_number}</p>
+            <p><strong>Name:</strong> {profile.display_name}</p>
             <p><strong>Email:</strong> {profile.email}</p>
           </div>
           <div>
-            <p><strong>Monthly Rent:</strong> KES {profile.monthly_rent?.toLocaleString()}</p>
-            <p><strong>Lease Period:</strong> {profile.lease_start} to {profile.lease_end}</p>
+            <p><strong>Phone:</strong> {profile.phone}</p>
+            <p><strong>Unit:</strong> {profile.unit?.unit_number || 'Not assigned'}</p>
+            {profile.unit?.monthly_rent && (
+              <p><strong>Monthly Rent:</strong> KES {profile.unit.monthly_rent.toLocaleString()}</p>
+            )}
           </div>
         </CardContent>
       </Card>
