@@ -1,4 +1,3 @@
-import axios from 'axios';
 import { supabase } from '@/integrations/supabase/client';
 
 // M-Pesa credentials
@@ -9,11 +8,23 @@ const passkey = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c91
 const baseURL = "https://sandbox.safaricom.co.ke";
 
 async function getToken() {
-  const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
-  const { data } = await axios.get(
+  const auth = btoa(`${consumerKey}:${consumerSecret}`);
+  
+  const response = await fetch(
     `${baseURL}/oauth/v1/generate?grant_type=client_credentials`,
-    { headers: { Authorization: `Basic ${auth}` } }
+    { 
+      headers: { 
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/json'
+      } 
+    }
   );
+  
+  if (!response.ok) {
+    throw new Error('Failed to get M-Pesa token');
+  }
+  
+  const data = await response.json();
   return data.access_token;
 }
 
@@ -27,7 +38,7 @@ export async function initiatePayment(paymentData: {
 }) {
   try {
     const timestamp = new Date().toISOString().replace(/[^0-9]/g, "").slice(0, -3);
-    const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString("base64");
+    const password = btoa(`${shortcode}${passkey}${timestamp}`);
     const token = await getToken();
 
     const stkData = {
@@ -44,11 +55,23 @@ export async function initiatePayment(paymentData: {
       TransactionDesc: `Rent payment for unit ${paymentData.unit_number}`
     };
 
-    const response = await axios.post(
+    const response = await fetch(
       `${baseURL}/mpesa/stkpush/v1/processrequest`,
-      stkData,
-      { headers: { Authorization: `Bearer ${token}` } }
+      {
+        method: 'POST',
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(stkData)
+      }
     );
+
+    if (!response.ok) {
+      throw new Error('M-Pesa STK push failed');
+    }
+
+    const responseData = await response.json();
 
     // Store in payments table
     const { data: payment, error } = await supabase
@@ -60,8 +83,8 @@ export async function initiatePayment(paymentData: {
         unit_number: paymentData.unit_number,
         phone_number: paymentData.phone_number,
         amount: paymentData.amount,
-        checkout_request_id: response.data.CheckoutRequestID,
-        merchant_request_id: response.data.MerchantRequestID,
+        checkout_request_id: responseData.CheckoutRequestID,
+        merchant_request_id: responseData.MerchantRequestID,
         status: 'pending'
       }])
       .select()
@@ -72,7 +95,7 @@ export async function initiatePayment(paymentData: {
     return {
       success: true,
       message: "Payment request sent successfully!",
-      data: response.data,
+      data: responseData,
       payment_id: payment.id
     };
 
