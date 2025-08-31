@@ -6,8 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import InvoicePDFGenerator from '../InvoicePDFGenerator';
 import { 
   Bell,
   Send,
@@ -15,12 +17,14 @@ import {
   Filter,
   CheckCircle,
   AlertCircle,
-  Clock
+  Clock,
+  FileText
 } from 'lucide-react';
 
 const RemindersManagement = () => {
   const [tenants, setTenants] = useState<any[]>([]);
   const [billingMonths, setBillingMonths] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [selectedTenants, setSelectedTenants] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
@@ -41,6 +45,32 @@ const RemindersManagement = () => {
       setBillingMonths(data || []);
     } catch (error) {
       console.error('Error fetching billing months:', error);
+    }
+  };
+
+  const fetchInvoices = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          profiles:tenant_id (
+            first_name,
+            last_name,
+            email
+          ),
+          billing_months:billing_month_id (
+            month,
+            year,
+            created_at
+          )
+        `)
+        .order('generated_at', { ascending: false });
+
+      if (error) throw error;
+      setInvoices(data || []);
+    } catch (error) {
+      console.error('Error fetching invoices:', error);
     }
   };
 
@@ -100,7 +130,8 @@ const RemindersManagement = () => {
   useEffect(() => {
     fetchBillingMonths();
     fetchTenants();
-  }, [selectedMonth]);
+    fetchInvoices();
+  }, []);
 
   useEffect(() => {
     fetchTenants();
@@ -249,158 +280,226 @@ const RemindersManagement = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-3">
             <Bell className="h-6 w-6 text-primary" />
-            Tenant Reminders
+            Notifications & Invoices
           </h2>
-          <p className="text-muted-foreground">Send notifications and reminders to tenants</p>
+          <p className="text-muted-foreground">Manage tenant communications and generated invoices</p>
         </div>
       </div>
 
-      {/* Compose Message */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Compose Reminder</CardTitle>
-          <CardDescription>Send custom messages to selected tenants</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="message">Message</Label>
-            <Textarea
-              id="message"
-              placeholder="Enter your reminder message..."
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              rows={4}
-            />
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              {selectedTenants.length} tenant(s) selected
-            </div>
-            
-            <Button 
-              onClick={sendReminders} 
-              disabled={!message.trim() || selectedTenants.length === 0 || isSending}
-            >
-              <Send className="h-4 w-4 mr-2" />
-              {isSending ? 'Sending...' : 'Send Reminders'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="reminders" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="reminders" className="flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Send Reminders
+          </TabsTrigger>
+          <TabsTrigger value="invoices" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Generated Invoices ({invoices.length})
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Tenant Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Select Recipients</CardTitle>
-          <CardDescription>Choose which tenants to send reminders to</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Filter and Selection Controls */}
-          <div className="flex flex-wrap items-center gap-4 mb-6">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <select 
-                value={selectedMonth} 
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="border rounded px-3 py-1 text-sm"
-              >
-                <option value="all">All Months</option>
-                {billingMonths
-                  .sort((a, b) => {
-                    if (a.year !== b.year) return b.year - a.year;
-                    return b.month - a.month;
-                  })
-                  .map((month) => (
-                    <option key={month.id} value={month.id}>
-                      {getMonthName(month.month)} {month.year}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <select 
-                value={filterStatus} 
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="border rounded px-3 py-1 text-sm"
-              >
-                <option value="all">All Status</option>
-                <option value="rejected">Rejected Payments</option>
-                <option value="partial">Partial Payments</option>
-                <option value="no_payment">No Payment</option>
-              </select>
-            </div>
-            
-            <Button variant="outline" size="sm" onClick={selectAllTenants}>
-              Select All ({filteredTenants.length})
-            </Button>
-            
-            <Button variant="outline" size="sm" onClick={clearSelection}>
-              Clear Selection
-            </Button>
-          </div>
-
-          {/* Tenant List */}
-          <div className="space-y-4">
-            {filteredTenants.map((tenant) => (
-              <div
-                key={tenant.id}
-                className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
-                  selectedTenants.includes(tenant.id) ? 'bg-primary/5 border-primary/20' : 'hover:bg-muted/50'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <Checkbox
-                    checked={selectedTenants.includes(tenant.id)}
-                    onCheckedChange={() => toggleTenantSelection(tenant.id)}
-                  />
-                  
-                  <div className="w-8 h-8 bg-gradient-to-br from-tenant to-tenant/80 rounded-full flex items-center justify-center text-tenant-foreground text-sm font-medium">
-                    {(tenant.first_name?.[0] || tenant.email[0]).toUpperCase()}
-                  </div>
-                  
-                  <div>
-                    <h4 className="font-medium">
-                      {tenant.first_name && tenant.last_name 
-                        ? `${tenant.first_name} ${tenant.last_name}`
-                        : tenant.email
-                      }
-                    </h4>
-                    <p className="text-sm text-muted-foreground">
-                      {tenant.units?.[0] ? `Unit ${tenant.units[0].unit_number}` : 'No unit assigned'} • {tenant.email}
-                    </p>
-                  </div>
+        <TabsContent value="reminders" className="space-y-6">
+          {/* Compose Message */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Compose Reminder</CardTitle>
+              <CardDescription>Send custom messages to selected tenants</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="message">Message</Label>
+                <Textarea
+                  id="message"
+                  placeholder="Enter your reminder message..."
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  rows={4}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-muted-foreground">
+                  {selectedTenants.length} tenant(s) selected
                 </div>
                 
-                <div className="flex items-center space-x-3">
-                  {getStatusBadge(tenant.latestPaymentStatus)}
-                  
-                  <div className="text-right text-sm">
-                    <p className="font-medium">
-                      KES {tenant.units?.[0]?.rent_amount || 0}
-                    </p>
-                    <p className="text-muted-foreground">Monthly rent</p>
-                  </div>
+                <Button 
+                  onClick={sendReminders} 
+                  disabled={!message.trim() || selectedTenants.length === 0 || isSending}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  {isSending ? 'Sending...' : 'Send Reminders'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Tenant Selection */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Select Recipients</CardTitle>
+              <CardDescription>Choose which tenants to send reminders to</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Filter and Selection Controls */}
+              <div className="flex flex-wrap items-center gap-4 mb-6">
+                <div className="flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-muted-foreground" />
+                  <select 
+                    value={selectedMonth} 
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="border rounded px-3 py-1 text-sm"
+                  >
+                    <option value="all">All Months</option>
+                    {billingMonths
+                      .sort((a, b) => {
+                        if (a.year !== b.year) return b.year - a.year;
+                        return b.month - a.month;
+                      })
+                      .map((month) => (
+                        <option key={month.id} value={month.id}>
+                          {getMonthName(month.month)} {month.year}
+                        </option>
+                      ))}
+                  </select>
                 </div>
+                
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={filterStatus} 
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                    className="border rounded px-3 py-1 text-sm"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="rejected">Rejected Payments</option>
+                    <option value="partial">Partial Payments</option>
+                    <option value="no_payment">No Payment</option>
+                  </select>
+                </div>
+                
+                <Button variant="outline" size="sm" onClick={selectAllTenants}>
+                  Select All ({filteredTenants.length})
+                </Button>
+                
+                <Button variant="outline" size="sm" onClick={clearSelection}>
+                  Clear Selection
+                </Button>
               </div>
-            ))}
-            
-            {filteredTenants.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
-                <Users className="h-8 w-8 mx-auto mb-2" />
-                <p className="text-sm">
-                  {filterStatus === 'all' ? 'No tenants found' : `No tenants with ${filterStatus} status`}
-                </p>
+
+              {/* Tenant List */}
+              <div className="space-y-4">
+                {filteredTenants.map((tenant) => (
+                  <div
+                    key={tenant.id}
+                    className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
+                      selectedTenants.includes(tenant.id) ? 'bg-primary/5 border-primary/20' : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        checked={selectedTenants.includes(tenant.id)}
+                        onCheckedChange={() => toggleTenantSelection(tenant.id)}
+                      />
+                      
+                      <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary/80 rounded-full flex items-center justify-center text-primary-foreground text-sm font-medium">
+                        {(tenant.first_name?.[0] || tenant.email[0]).toUpperCase()}
+                      </div>
+                      
+                      <div>
+                        <h4 className="font-medium">
+                          {tenant.first_name && tenant.last_name 
+                            ? `${tenant.first_name} ${tenant.last_name}`
+                            : tenant.email
+                          }
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          {tenant.units?.[0] ? `Unit ${tenant.units[0].unit_number}` : 'No unit assigned'} • {tenant.email}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3">
+                      {getStatusBadge(tenant.latestPaymentStatus)}
+                      
+                      <div className="text-right text-sm">
+                        <p className="font-medium">
+                          KES {tenant.units?.[0]?.rent_amount?.toLocaleString() || 0}
+                        </p>
+                        <p className="text-muted-foreground">Monthly rent</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {filteredTenants.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="h-8 w-8 mx-auto mb-2" />
+                    <p className="text-sm">
+                      {filterStatus === 'all' ? 'No tenants found' : `No tenants with ${filterStatus} status`}
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="invoices" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tenant Invoice Notifications</CardTitle>
+              <CardDescription>Invoice download notifications automatically sent to tenants when billing months are created</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {invoices.map((invoice) => (
+                  <div
+                    key={invoice.id}
+                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <h4 className="font-medium">
+                        Invoice #{invoice.invoice_number}
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        Unit {invoice.unit_number} • KES {invoice.amount.toLocaleString()}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Generated: {new Date(invoice.generated_at).toLocaleDateString()}
+                      </p>
+                      <p className="text-xs text-success mt-1">
+                        ✓ Notification sent to tenant automatically
+                      </p>
+                    </div>
+                    
+                    <InvoicePDFGenerator 
+                      invoiceData={{
+                        tenantName: invoice.profiles?.display_name || `${invoice.profiles?.first_name} ${invoice.profiles?.last_name}` || 'Unknown Tenant',
+                        unitNumber: invoice.unit_number,
+                        amount: invoice.amount,
+                        billingMonth: getMonthName(invoice.billing_months?.month || 1),
+                        billingYear: invoice.billing_months?.year || new Date().getFullYear(),
+                        dateCreated: new Date(invoice.billing_months?.created_at || invoice.generated_at).toLocaleDateString()
+                      }}
+                    />
+                  </div>
+                ))}
+                
+                {invoices.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileText className="h-8 w-8 mx-auto mb-2" />
+                    <p>No invoices generated yet</p>
+                    <p className="text-sm mt-2">Create a billing month to automatically generate invoices and send notifications to tenants</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
