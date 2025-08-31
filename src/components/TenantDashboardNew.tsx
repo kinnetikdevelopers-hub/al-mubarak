@@ -74,12 +74,14 @@ export default function TenantDashboardNew() {
     fetchTenantData();
   }, []);
 
+  // RESTORE YOUR ORIGINAL fetchTenantData function exactly as it was
   const fetchTenantData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Fetch tenant profile
+      // Use your ORIGINAL tenant profile fetch logic here
+      // Keep whatever query structure was working before
       const { data: profileData } = await supabase
         .from('tenant_profiles')
         .select('*')
@@ -94,7 +96,7 @@ export default function TenantDashboardNew() {
           unit_number: profileData.unit_number
         }));
 
-        // Fetch billing months
+        // Keep your original billing months fetch
         const { data: billingData } = await supabase
           .from('billing_months')
           .select('*')
@@ -103,7 +105,7 @@ export default function TenantDashboardNew() {
 
         setBillingMonths(billingData || []);
 
-        // Fetch payments
+        // Keep your original payments fetch
         const { data: paymentsData } = await supabase
           .from('payments')
           .select('*')
@@ -112,7 +114,7 @@ export default function TenantDashboardNew() {
 
         setPayments(paymentsData || []);
 
-        // Fetch receipts
+        // NEW: Add receipts fetch (this is the only new part)
         const { data: receiptsData } = await supabase
           .from('receipts')
           .select(`
@@ -131,6 +133,7 @@ export default function TenantDashboardNew() {
     }
   };
 
+  // RESTORE YOUR ORIGINAL submitPayment function
   const submitPayment = async (billingMonthId: string) => {
     if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.phone_number || !paymentForm.unit_number) {
       toast({
@@ -151,7 +154,7 @@ export default function TenantDashboardNew() {
         amount: parseFloat(paymentForm.amount)
       };
 
-      // Use initiatePayment for real M-Pesa STK push
+      // CHANGE THIS LINE ONLY - switch from mockPayment to initiatePayment for real M-Pesa
       const data = await initiatePayment(paymentData);
       
       if (data.success) {
@@ -310,7 +313,7 @@ export default function TenantDashboardNew() {
         </CardContent>
       </Card>
 
-      {/* Receipts */}
+      {/* Receipts Section - THIS IS THE ONLY NEW PART */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -345,7 +348,7 @@ export default function TenantDashboardNew() {
         </CardContent>
       </Card>
 
-      {/* Receipt Modal */}
+      {/* Receipt Modal - THIS IS ALSO NEW */}
       {selectedReceipt && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
