@@ -14,6 +14,12 @@ interface Profile {
   status: 'pending' | 'approved' | 'suspended';
   created_at: string;
   updated_at: string;
+  lease_start_date?: string;
+  lease_end_date?: string;
+  lease_document_url?: string;
+  lease_document_name?: string;
+  lease_document_size?: number;
+  lease_document_uploaded_at?: string;
 }
 
 interface AuthContextType {
@@ -153,10 +159,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       options: {
         emailRedirectTo: redirectUrl,
         data: additionalData ? {
-          first_name: additionalData.first_name,
-          last_name: additionalData.last_name,
-          display_name: additionalData.display_name,
-          id_number_full: additionalData.id_number_full,
+          first_name: additionalData.firstName,
+          last_name: additionalData.lastName,
+          display_name: additionalData.displayName,
+          id_number_full: additionalData.idNumber,
           phone: additionalData.phone
         } : {}
       }
