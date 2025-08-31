@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import FileUpload from './FileUpload';
 import { 
   User, 
   Mail, 
@@ -32,8 +32,10 @@ interface Profile {
   status: 'pending' | 'approved' | 'suspended';
   created_at: string;
   updated_at: string;
-  lease_start_date?: string;
-  lease_end_date?: string;
+  lease_document_url?: string;
+  lease_document_name?: string;
+  lease_document_size?: number;
+  lease_document_uploaded_at?: string;
 }
 
 interface TenantDetailsModalProps {
@@ -44,41 +46,54 @@ interface TenantDetailsModalProps {
 }
 
 const TenantDetailsModal = ({ tenant, isOpen, onClose, onTenantUpdate }: TenantDetailsModalProps) => {
-  const [leaseStartDate, setLeaseStartDate] = useState(tenant?.lease_start_date || '');
-  const [leaseEndDate, setLeaseEndDate] = useState(tenant?.lease_end_date || '');
-  const [isSaving, setIsSaving] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const { toast } = useToast();
 
-  const handleSaveLeaseInfo = async () => {
-    if (!tenant) return;
+  const handleFileSelect = (file: File) => {
+    setSelectedFile(file);
+  };
 
-    setIsSaving(true);
+  const handleFileRemove = () => {
+    setSelectedFile(null);
+  };
+
+  const handleUploadDocument = async () => {
+    if (!selectedFile || !tenant?.id) return;
+
+    setIsUploading(true);
     try {
+      // For demo purposes, store file info in database
+      // In production, upload to storage first
       const { error } = await supabase
         .from('profiles')
         .update({
-          ...(leaseStartDate && { lease_start_date: leaseStartDate }),
-          ...(leaseEndDate && { lease_end_date: leaseEndDate })
-        } as any)
+          lease_document_name: selectedFile.name,
+          lease_document_size: selectedFile.size,
+          lease_document_uploaded_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
         .eq('id', tenant.id);
 
       if (error) throw error;
 
       toast({
         title: "Success",
-        description: "Lease information updated successfully",
+        description: "Lease document uploaded successfully!",
       });
-      
+
       onTenantUpdate?.();
+      setSelectedFile(null);
+
     } catch (error) {
-      console.error('Error updating lease info:', error);
+      console.error('Error uploading document:', error);
       toast({
         title: "Error",
-        description: "Failed to update lease information",
+        description: "Failed to upload lease document",
         variant: "destructive",
       });
     } finally {
-      setIsSaving(false);
+      setIsUploading(false);
     }
   };
 
@@ -191,46 +206,51 @@ const TenantDetailsModal = ({ tenant, isOpen, onClose, onTenantUpdate }: TenantD
             </CardContent>
           </Card>
 
-          {/* Lease Management */}
+          {/* Lease Document Management */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Building2 className="h-5 w-5" />
-                Lease Management
+                Lease Document Management
               </CardTitle>
-              <CardDescription>Set lease start and end dates for the tenant</CardDescription>
+              <CardDescription>Upload and manage tenant lease documents</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="lease-start">Lease Start Date</Label>
-                  <Input
-                    id="lease-start"
-                    type="date"
-                    value={leaseStartDate}
-                    onChange={(e) => setLeaseStartDate(e.target.value)}
-                  />
+              {tenant?.lease_document_name && (
+                <div className="p-4 bg-muted rounded-lg">
+                  <h4 className="font-medium mb-2">Current Document</h4>
+                  <p className="text-sm text-muted-foreground">
+                    {tenant.lease_document_name}
+                  </p>
+                  {tenant.lease_document_size && (
+                    <p className="text-xs text-muted-foreground">
+                      Size: {(tenant.lease_document_size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  )}
+                  {tenant.lease_document_uploaded_at && (
+                    <p className="text-xs text-muted-foreground">
+                      Uploaded: {new Date(tenant.lease_document_uploaded_at).toLocaleDateString()}
+                    </p>
+                  )}
                 </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="lease-end">Lease End Date</Label>
-                  <Input
-                    id="lease-end"
-                    type="date"
-                    value={leaseEndDate}
-                    onChange={(e) => setLeaseEndDate(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <Button 
-                onClick={handleSaveLeaseInfo}
-                disabled={isSaving}
-                className="w-full sm:w-auto"
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {isSaving ? 'Saving...' : 'Save Lease Information'}
-              </Button>
+              )}
+              
+              <FileUpload
+                onFileSelect={handleFileSelect}
+                onFileRemove={handleFileRemove}
+                currentFile={tenant?.lease_document_name}
+                isUploading={isUploading}
+              />
+              
+              {selectedFile && (
+                <Button 
+                  onClick={handleUploadDocument}
+                  disabled={isUploading}
+                  className="w-full"
+                >
+                  {isUploading ? 'Uploading...' : 'Upload Document'}
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>
