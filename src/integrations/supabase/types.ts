@@ -44,6 +44,45 @@ export type Database = {
         }
         Relationships: []
       }
+      invoices: {
+        Row: {
+          amount: number
+          billing_month_id: string
+          created_at: string
+          generated_at: string
+          id: string
+          invoice_number: string
+          pdf_url: string | null
+          tenant_id: string
+          unit_number: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          billing_month_id: string
+          created_at?: string
+          generated_at?: string
+          id?: string
+          invoice_number: string
+          pdf_url?: string | null
+          tenant_id: string
+          unit_number: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          billing_month_id?: string
+          created_at?: string
+          generated_at?: string
+          id?: string
+          invoice_number?: string
+          pdf_url?: string | null
+          tenant_id?: string
+          unit_number?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
@@ -140,6 +179,10 @@ export type Database = {
           id_number: string | null
           id_number_full: string | null
           last_name: string | null
+          lease_document_name: string | null
+          lease_document_size: number | null
+          lease_document_uploaded_at: string | null
+          lease_document_url: string | null
           phone: string | null
           role: Database["public"]["Enums"]["app_role"]
           status: Database["public"]["Enums"]["user_status"]
@@ -154,6 +197,10 @@ export type Database = {
           id_number?: string | null
           id_number_full?: string | null
           last_name?: string | null
+          lease_document_name?: string | null
+          lease_document_size?: number | null
+          lease_document_uploaded_at?: string | null
+          lease_document_url?: string | null
           phone?: string | null
           role: Database["public"]["Enums"]["app_role"]
           status?: Database["public"]["Enums"]["user_status"]
@@ -168,9 +215,52 @@ export type Database = {
           id_number?: string | null
           id_number_full?: string | null
           last_name?: string | null
+          lease_document_name?: string | null
+          lease_document_size?: number | null
+          lease_document_uploaded_at?: string | null
+          lease_document_url?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["app_role"]
           status?: Database["public"]["Enums"]["user_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      receipts: {
+        Row: {
+          amount: number
+          created_at: string
+          generated_at: string
+          id: string
+          payment_id: string
+          pdf_url: string | null
+          receipt_number: string
+          tenant_id: string
+          unit_number: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          generated_at?: string
+          id?: string
+          payment_id: string
+          pdf_url?: string | null
+          receipt_number: string
+          tenant_id: string
+          unit_number: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          generated_at?: string
+          id?: string
+          payment_id?: string
+          pdf_url?: string | null
+          receipt_number?: string
+          tenant_id?: string
+          unit_number?: string
           updated_at?: string
         }
         Relationships: []
@@ -221,6 +311,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_preferences: {
+        Row: {
+          created_at: string
+          id: string
+          theme: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          theme?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          theme?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
