@@ -78,18 +78,77 @@ const BillingManagementNew = () => {
 
   const createBillingMonth = async () => {
     try {
-      const { error } = await supabase
+      // First create the billing month
+      const { data: billingMonthData, error } = await supabase
         .from('billing_months')
         .insert([{
           ...newBillingMonth,
           month: parseInt(newBillingMonth.month)
-        }]);
+        }])
+        .select()
+        .single();
 
       if (error) throw error;
 
+      // Generate invoices for all tenants with units
+      const { data: tenantsWithUnits, error: tenantsError } = await supabase
+        .from('units')
+        .select(`
+          tenant_id,
+          unit_number,
+          rent_amount,
+          profiles:tenant_id (
+            id,
+            first_name,
+            last_name,
+            email
+          )
+        `)
+        .not('tenant_id', 'is', null);
+
+      if (tenantsError) throw tenantsError;
+
+      // Generate invoices for each tenant
+      const invoices = tenantsWithUnits.map(unit => ({
+        billing_month_id: billingMonthData.id,
+        tenant_id: unit.tenant_id,
+        invoice_number: `INV-${billingMonthData.year}-${String(billingMonthData.month).padStart(2, '0')}-${unit.unit_number}`,
+        amount: unit.rent_amount,
+        unit_number: unit.unit_number
+      }));
+
+      if (invoices.length > 0) {
+        const { error: invoiceError } = await supabase
+          .from('invoices')
+          .insert(invoices);
+
+        if (invoiceError) throw invoiceError;
+
+        // Create notifications for each tenant about their invoice
+        const getMonthName = (month: number) => {
+          const months = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+          ];
+          return months[month - 1];
+        };
+
+        const notifications = tenantsWithUnits.map(unit => ({
+          tenant_id: unit.tenant_id,
+          message: `Kindly, download your invoice for the month of ${getMonthName(billingMonthData.month)} ${billingMonthData.year} here.`,
+          read: false
+        }));
+
+        const { error: notificationError } = await supabase
+          .from('notifications')
+          .insert(notifications);
+
+        if (notificationError) console.error('Error creating notifications:', notificationError);
+      }
+
       toast({
         title: "Success",
-        description: "Billing month created successfully",
+        description: `Billing month created successfully with ${invoices.length} invoices generated`,
       });
 
       setIsCreateDialogOpen(false);
@@ -103,7 +162,7 @@ const BillingManagementNew = () => {
       console.error('Error creating billing month:', error);
       toast({
         title: "Error",
-        description: "Failed to create billing month",
+        description: "Failed to create billing month and generate invoices",
         variant: "destructive",
       });
     }
@@ -117,6 +176,31 @@ const BillingManagementNew = () => {
         .eq('id', paymentId);
 
       if (error) throw error;
+
+      // Generate receipt only when payment is marked as paid (full payment)
+      if (status === 'paid') {
+        const payment = pendingPayments.find(p => p.id === paymentId);
+        if (payment) {
+          // Get unit details to include rent amount in receipt
+          const { data: unitData } = await supabase
+            .from('units')
+            .select('rent_amount, unit_number')
+            .eq('tenant_id', payment.tenant_id)
+            .single();
+
+          const { error: receiptError } = await supabase
+            .from('receipts')
+            .insert({
+              payment_id: paymentId,
+              tenant_id: payment.tenant_id,
+              receipt_number: `RCP-${Date.now()}-${payment.tenant_id.slice(0, 8)}`,
+              amount: unitData?.rent_amount || payment.amount,
+              unit_number: unitData?.unit_number || 'N/A'
+            });
+
+          if (receiptError) console.error('Error creating receipt:', receiptError);
+        }
+      }
 
       // Refresh payments
       if (selectedBillingMonth) {
