@@ -4,398 +4,396 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Receipt, Download, Phone, Calendar, DollarSign, Home, User, Mail } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Calendar, DollarSign, FileText, Phone, CreditCard, Receipt as ReceiptIcon } from 'lucide-react';
-import { initiatePayment, mockPayment } from '@/pages/api/mpesa';
 import ReceiptPDFGenerator from '@/components/ReceiptPDFGenerator';
 
-interface TenantProfile {
-  id: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  phone: string;
-  display_name: string;
-  role: string;
-  status: string;
-  unit?: {
-    unit_number: string;
-    rent_amount: number;
-    lease_start_date: string;
-    lease_end_date: string;
-  };
-}
-
-interface BillingMonth {
-  id: string;
-  month: string;
-  year: number;
-  due_date: string;
-  status: 'pending' | 'paid' | 'overdue';
-  amount: number;
-}
-
-interface Payment {
-  id: string;
-  amount: number;
-  status: 'pending' | 'paid' | 'failed';
-  created_at: string;
-  mpesa_code?: string;
-  mpesa_receipt_number?: string;
-  phone_number?: string;
-  full_name: string;
-  unit_number: string;
-}
-
-interface PaymentReceipt {
-  id: string;
-  receipt_number: string;
-  amount: number;
-  unit_number: string;
-  created_at: string;
-  payment: {
-    full_name: string;
-    phone_number: string;
-    mpesa_receipt_number: string;
-    transaction_date: string;
-  };
-}
-
-export default function TenantDashboardNew() {
-  const [profile, setProfile] = useState<TenantProfile | null>(null);
-  const [billingMonths, setBillingMonths] = useState<BillingMonth[]>([]);
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
-  const [paymentForm, setPaymentForm] = useState({
-    full_name: '',
-    amount: '',
-    phone_number: '',
-    unit_number: ''
-  });
-  const [selectedReceipt, setSelectedReceipt] = useState<PaymentReceipt | null>(null);
+const TenantDashboardNew = () => {
+  const [tenantData, setTenantData] = useState(null);
+  const [unitData, setUnitData] = useState(null);
+  const [payments, setPayments] = useState([]);
+  const [selectedReceipt, setSelectedReceipt] = useState(null);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(true);
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     fetchTenantData();
   }, []);
 
-  // RESTORE YOUR ORIGINAL fetchTenantData function exactly as it was
   const fetchTenantData = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      
+      if (!user) {
+        console.log("No authenticated user");
+        setLoading(false);
+        return;
+      }
 
-      // Fetch profile first
-      const { data: profileData, error: profileError } = await supabase
+      console.log("Fetching data for user:", user.id);
+
+      // Fetch profile from profiles table using id column
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single();
 
-      console.log('Profile fetch result:', { profileData, profileError });
-
-      if (profileData) {
-        // Fetch the unit assigned to this tenant
-        const { data: unitData } = await supabase
-          .from('units')
-          .select('*')
-          .eq('tenant_id', profileData.id)
-          .single();
-
-        console.log('Unit data:', unitData);
-
-        setProfile({...profileData, unit: unitData});
-        setPaymentForm(prev => ({
-          ...prev,
-          full_name: profileData.display_name,
-          unit_number: unitData?.unit_number || ''
-        }));
-
-        // Keep your original billing months fetch
-        const { data: billingData } = await supabase
-          .from('billing_months')
-          .select('*')
-          .order('year', { ascending: false })
-          .order('month', { ascending: false });
-
-        setBillingMonths(billingData || []);
-
-        // Keep your original payments fetch
-        const { data: paymentsData } = await supabase
-          .from('payments')
-          .select('*')
-          .eq('tenant_id', profileData.id)
-          .order('created_at', { ascending: false });
-
-        setPayments(paymentsData || []);
-
-        // NEW: Add receipts fetch from correct table
-        const { data: receiptsData } = await supabase
-          .from('receipts')
-          .select(`
-            *,
-            payment:payments(full_name, phone_number, mpesa_receipt_number, transaction_date)
-          `)
-          .eq('tenant_id', profileData.id)
-          .order('created_at', { ascending: false });
-
-        setReceipts(receiptsData || []);
+      if (profileError || !profile) {
+        console.error('Profile fetch error:', profileError);
+        toast({
+          title: "Error",
+          description: "Could not fetch tenant profile",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
       }
+
+      console.log("Profile data:", profile);
+      setTenantData(profile);
+
+      // Fetch unit data where tenant_id matches profile.id
+      const { data: unit, error: unitError } = await supabase
+        .from('units')
+        .select('*')
+        .eq('tenant_id', profile.id)
+        .single();
+
+      if (unit && !unitError) {
+        console.log("Unit data:", unit);
+        setUnitData(unit);
+      }
+
+      // Fetch payments
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select(`
+          *,
+          billing_months(month, year)
+        `)
+        .eq('tenant_id', profile.id)
+        .order('created_at', { ascending: false });
+
+      if (!paymentsError && paymentsData) {
+        setPayments(paymentsData);
+      }
+
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching tenant data:', error);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  // RESTORE YOUR ORIGINAL submitPayment function
-  const submitPayment = async (billingMonthId: string) => {
-    if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.phone_number || !paymentForm.unit_number) {
+  const initiatePayment = async () => {
+    if (!phoneNumber || !amount || !tenantData) {
       toast({
         title: "Error",
-        description: "Please fill in all fields including phone number",
+        description: "Please fill in all fields",
         variant: "destructive",
       });
       return;
     }
 
-    try {
-      const paymentData = {
-        tenant_id: profile?.id!,
-        billing_month_id: billingMonthId,
-        full_name: paymentForm.full_name,
-        unit_number: paymentForm.unit_number,
-        phone_number: paymentForm.phone_number,
-        amount: parseFloat(paymentForm.amount)
-      };
+    setPaymentLoading(true);
 
-      // CHANGE THIS LINE ONLY - switch from mockPayment to initiatePayment for real M-Pesa
-      const data = await initiatePayment(paymentData);
-      
-      if (data.success) {
+    try {
+      const response = await fetch('/api/mpesa-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          phoneNumber: phoneNumber,
+          amount: parseFloat(amount),
+          tenantId: tenantData.id,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
         toast({
-          title: "Payment Request Sent!",
-          description: "Please check your phone for M-Pesa STK push prompt",
+          title: "Payment Initiated",
+          description: "Please check your phone for M-Pesa prompt",
         });
-        setPaymentForm({ full_name: '', amount: '', phone_number: '', unit_number: '' });
-        fetchTenantData(); // Refresh data
+        setPhoneNumber('');
+        setAmount('');
+        // Refresh payments after successful initiation
+        setTimeout(fetchTenantData, 3000);
       } else {
-        throw new Error("Payment failed");
+        toast({
+          title: "Payment Error",
+          description: result.error || "Failed to initiate payment",
+          variant: "destructive",
+        });
       }
     } catch (error) {
-      console.error('Error processing payment:', error);
+      console.error('Payment error:', error);
       toast({
         title: "Error",
-        description: "Failed to initiate payment. Please try again.",
+        description: "Network error occurred",
         variant: "destructive",
       });
+    } finally {
+      setPaymentLoading(false);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'paid': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'overdue': return 'bg-red-100 text-red-800';
-      case 'failed': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const handleViewReceipt = (payment) => {
+    const receiptData = {
+      receiptNumber: `ALM-${payment.id.slice(0, 8)}`,
+      tenantName: `${tenantData?.first_name || ''} ${tenantData?.last_name || ''}`.trim(),
+      unitNumber: unitData?.unit_number || 'N/A',
+      amount: payment.amount,
+      paymentDate: payment.created_at,
+      paymentMethod: 'M-Pesa',
+      mpesaCode: payment.mpesa_receipt_number || payment.mpesa_code || 'N/A',
+      monthYear: payment.billing_months ? 
+        `${getMonthName(payment.billing_months.month)} ${payment.billing_months.year}` : 
+        'N/A'
+    };
+    setSelectedReceipt(receiptData);
+  };
+
+  const getMonthName = (monthNumber) => {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    return months[monthNumber - 1] || 'Unknown';
   };
 
   if (loading) {
-    return <div className="flex justify-center items-center h-64">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
-  if (!profile) {
-    return <div className="text-center p-8">No tenant profile found.</div>;
+  if (!tenantData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Card className="w-96">
+          <CardContent className="text-center p-6">
+            <p className="text-red-600">No tenant profile found. Please contact support.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Tenant Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome back, {profile.display_name}</p>
-      </div>
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Welcome, {tenantData.first_name} {tenantData.last_name}
+          </h1>
+          <p className="text-gray-600 mt-2">Tenant Dashboard</p>
+        </div>
 
-      {/* Tenant Info */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Information</CardTitle>
-        </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <p><strong>Name:</strong> {profile.display_name}</p>
-            <p><strong>Email:</strong> {profile.email}</p>
-          </div>
-          <div>
-            <p><strong>Phone:</strong> {profile.phone}</p>
-            <p><strong>Unit:</strong> {profile.unit?.unit_number || 'Not assigned'}</p>
-            {profile.unit?.rent_amount && (
-              <p><strong>Monthly Rent:</strong> KES {profile.unit.rent_amount.toLocaleString()}</p>
-            )}
-            {profile.unit?.lease_start_date && profile.unit?.lease_end_date && (
-              <p><strong>Lease:</strong> {profile.unit.lease_start_date} to {profile.unit.lease_end_date}</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Pay Rent */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5" />
-            Pay Rent - M-Pesa
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              placeholder="Full Name"
-              value={paymentForm.full_name}
-              onChange={(e) => setPaymentForm({...paymentForm, full_name: e.target.value})}
-            />
-            <Input
-              placeholder="Unit Number"
-              value={paymentForm.unit_number}
-              onChange={(e) => setPaymentForm({...paymentForm, unit_number: e.target.value})}
-            />
-            <Input
-              placeholder="Phone Number (254...)"
-              value={paymentForm.phone_number}
-              onChange={(e) => setPaymentForm({...paymentForm, phone_number: e.target.value})}
-            />
-            <Input
-              type="number"
-              placeholder="Amount (KES)"
-              value={paymentForm.amount}
-              onChange={(e) => setPaymentForm({...paymentForm, amount: e.target.value})}
-            />
-          </div>
-          
-          {billingMonths.length > 0 && (
-            <div className="mt-4">
-              <h4 className="font-semibold mb-2">Select Billing Month:</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {billingMonths.map((month) => (
-                  <Button
-                    key={month.id}
-                    variant={month.status === 'paid' ? 'secondary' : 'outline'}
-                    className="p-3 h-auto flex flex-col items-start"
-                    onClick={() => {
-                      setPaymentForm({...paymentForm, amount: month.amount.toString()});
-                      submitPayment(month.id);
-                    }}
-                    disabled={month.status === 'paid'}
-                  >
-                    <span className="font-medium">{month.month} {month.year}</span>
-                    <span className="text-sm">KES {month.amount.toLocaleString()}</span>
-                    <Badge className={getStatusColor(month.status)}>
-                      {month.status}
-                    </Badge>
-                  </Button>
-                ))}
+        {/* Tenant Info Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Tenant Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="flex items-center gap-3">
+                <User className="h-4 w-4 text-gray-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Name</p>
+                  <p className="font-medium">{tenantData.first_name} {tenantData.last_name}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Mail className="h-4 w-4 text-gray-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Email</p>
+                  <p className="font-medium">{tenantData.email}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Phone className="h-4 w-4 text-gray-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Phone</p>
+                  <p className="font-medium">{tenantData.phone || 'Not provided'}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <Home className="h-4 w-4 text-gray-500" />
+                <div>
+                  <p className="text-sm text-gray-500">Unit</p>
+                  <p className="font-medium">{unitData?.unit_number || 'Not assigned'}</p>
+                </div>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      {/* Payment History */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <DollarSign className="h-5 w-5" />
-            Payment History
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {payments.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No payments found.</p>
-          ) : (
-            <div className="space-y-3">
-              {payments.map((payment) => (
-                <div key={payment.id} className="flex justify-between items-center p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium">KES {payment.amount.toLocaleString()}</p>
-                    <p className="text-sm text-gray-600">{new Date(payment.created_at).toLocaleDateString()}</p>
-                    {payment.mpesa_receipt_number && (
-                      <p className="text-xs text-green-600 font-mono">M-Pesa: {payment.mpesa_receipt_number}</p>
-                    )}
-                  </div>
-                  <Badge className={getStatusColor(payment.status)}>
-                    {payment.status}
-                  </Badge>
+        {/* Unit Details Card */}
+        {unitData && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Home className="h-5 w-5" />
+                Unit Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Unit Number</p>
+                  <p className="font-medium">{unitData.unit_number}</p>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Receipts Section - THIS IS THE ONLY NEW PART */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ReceiptIcon className="h-5 w-5" />
-            Your Receipts
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {receipts.length === 0 ? (
-            <p className="text-gray-500 text-center py-4">No receipts available.</p>
-          ) : (
-            <div className="space-y-3">
-              {receipts.map((receipt) => (
-                <div key={receipt.id} className="flex justify-between items-center p-3 border rounded-lg">
-                  <div>
-                    <p className="font-medium">Receipt #{receipt.receipt_number}</p>
-                    <p className="text-sm text-gray-600">KES {receipt.amount.toLocaleString()}</p>
-                    <p className="text-xs text-gray-500">{new Date(receipt.created_at).toLocaleDateString()}</p>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSelectedReceipt(receipt)}
-                  >
-                    <FileText className="h-4 w-4 mr-1" />
-                    View
-                  </Button>
+                <div>
+                  <p className="text-sm text-gray-500">Floor</p>
+                  <p className="font-medium">{unitData.floor}</p>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div>
+                  <p className="text-sm text-gray-500">Bedrooms</p>
+                  <p className="font-medium">{unitData.bedrooms}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">Monthly Rent</p>
+                  <p className="font-medium text-green-600">
+                    KSh {unitData.rent_amount?.toLocaleString() || 'N/A'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Receipt Modal - THIS IS ALSO NEW */}
-      {selectedReceipt && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Receipt Details</h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setSelectedReceipt(null)}
-              >
-                ✕
-              </Button>
+        {/* Payment Form */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              Make Payment
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Phone Number</label>
+                <Input
+                  type="tel"
+                  placeholder="254712345678"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Amount (KSh)</label>
+                <Input
+                  type="number"
+                  placeholder="Enter amount"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                />
+              </div>
+              <div className="flex items-end">
+                <Button 
+                  onClick={initiatePayment}
+                  disabled={paymentLoading}
+                  className="w-full"
+                >
+                  {paymentLoading ? 'Processing...' : 'Pay with M-Pesa'}
+                </Button>
+              </div>
             </div>
-            <ReceiptPDFGenerator
-              receiptData={{
-                tenantName: selectedReceipt.payment.full_name,
-                unitNumber: selectedReceipt.unit_number,
-                amount: selectedReceipt.amount,
-                receiptNumber: selectedReceipt.receipt_number,
-                paymentMethod: selectedReceipt.payment.mpesa_receipt_number ? 'M-Pesa' : 'Other'
-              }}
-            />
-          </div>
-        </div>
-      )}
+          </CardContent>
+        </Card>
+
+        {/* Payment History */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Payment History
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {payments.length === 0 ? (
+              <p className="text-center text-gray-500 py-8">No payments found</p>
+            ) : (
+              <div className="space-y-4">
+                {payments.map((payment) => (
+                  <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <p className="font-medium">
+                          KSh {payment.amount?.toLocaleString() || '0'}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {payment.billing_months ? 
+                            `${getMonthName(payment.billing_months.month)} ${payment.billing_months.year}` : 
+                            'Payment'
+                          }
+                        </p>
+                      </div>
+                      <div>
+                        <Badge variant={payment.status === 'completed' ? 'success' : 'secondary'}>
+                          {payment.status || 'pending'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-500">
+                        {payment.created_at ? new Date(payment.created_at).toLocaleDateString() : 'N/A'}
+                      </p>
+                      {payment.status === 'completed' && (
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewReceipt(payment)}
+                            >
+                              <Receipt className="h-4 w-4 mr-1" />
+                              Receipt
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-md">
+                            <DialogHeader>
+                              <DialogTitle>Payment Receipt</DialogTitle>
+                            </DialogHeader>
+                            {selectedReceipt && (
+                              <ReceiptPDFGenerator receiptData={selectedReceipt} />
+                            )}
+                          </DialogContent>
+                        </Dialog>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
-}
+};
+
+export default TenantDashboardNew;
