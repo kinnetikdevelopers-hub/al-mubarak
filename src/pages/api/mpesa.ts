@@ -82,7 +82,6 @@ export async function initiatePayment(paymentData: {
   }
 }
 
-// For testing locally without actual M-Pesa integration
 export async function mockPayment(paymentData: {
   tenant_id: string;
   billing_month_id: string;

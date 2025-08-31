@@ -14,7 +14,7 @@ import PaymentStatusMessage from './PaymentStatusMessage';
 import ThemeToggle from './ThemeToggle';
 import ReceiptPDFGenerator from './ReceiptPDFGenerator';
 import InvoicePDFGenerator from './InvoicePDFGenerator';
-import { initiatePayment, mockPayment } from '@/api/mpesa';
+import { initiatePayment, mockPayment } from '@/pages/api/mpesa';
 import { 
   AlertCircle, 
   CreditCard, 
