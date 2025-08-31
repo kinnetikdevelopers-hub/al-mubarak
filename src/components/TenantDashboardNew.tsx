@@ -14,6 +14,7 @@ import PaymentStatusMessage from './PaymentStatusMessage';
 import ThemeToggle from './ThemeToggle';
 import ReceiptPDFGenerator from './ReceiptPDFGenerator';
 import InvoicePDFGenerator from './InvoicePDFGenerator';
+import { initiatePayment, mockPayment } from '@/api/mpesa';
 import { 
   AlertCircle, 
   CreditCard, 
@@ -46,7 +47,6 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
   const [invoices, setInvoices] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   
-  // FIXED: Only one paymentForm state declaration with phone_number included
   const [paymentForm, setPaymentForm] = useState({
     full_name: '',
     amount: '',
@@ -127,7 +127,6 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
     fetchTenantData();
   }, [profile?.id]);
 
-  // FIXED: Updated submitPayment function for M-Pesa STK push
   const submitPayment = async (billingMonthId: string) => {
     if (!paymentForm.full_name || !paymentForm.amount || !paymentForm.phone_number || !paymentForm.unit_number) {
       toast({
@@ -139,37 +138,35 @@ const TenantDashboardNew = ({ activeTab, onTabChange }: TenantDashboardNewProps)
     }
 
     try {
-      const response = await fetch('/api/mpesa/initiate-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenant_id: profile?.id,
-          billing_month_id: billingMonthId,
-          full_name: paymentForm.full_name,
-          unit_number: paymentForm.unit_number,
-          phone_number: paymentForm.phone_number,
-          amount: parseFloat(paymentForm.amount)
-        })
-      });
+      const paymentData = {
+        tenant_id: profile?.id!,
+        billing_month_id: billingMonthId,
+        full_name: paymentForm.full_name,
+        unit_number: paymentForm.unit_number,
+        phone_number: paymentForm.phone_number,
+        amount: parseFloat(paymentForm.amount)
+      };
 
-      const data = await response.json();
+      // Use mockPayment for local testing, initiatePayment for production
+      const data = await mockPayment(paymentData);
+      // const data = await initiatePayment(paymentData); // Use this for real M-Pesa
 
       if (data.success) {
         toast({
-          title: "Payment Request Sent!",
-          description: `Check your phone for M-Pesa prompt. Request ID: ${data.data.CheckoutRequestID}`,
+          title: "Payment Successful!",
+          description: `Mock payment completed. Payment ID: ${data.payment_id}`,
         });
 
         setPaymentForm({ full_name: '', amount: '', phone_number: '', unit_number: '' });
         fetchTenantData(); // Refresh data
       } else {
-        throw new Error(data.error);
+        throw new Error("Payment failed");
       }
     } catch (error) {
-      console.error('Error initiating payment:', error);
+      console.error('Error processing payment:', error);
       toast({
         title: "Error",
-        description: "Failed to initiate payment",
+        description: "Failed to process payment",
         variant: "destructive",
       });
     }
