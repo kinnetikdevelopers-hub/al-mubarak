@@ -1,19 +1,27 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { CheckCircle, AlertTriangle, XCircle, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { CheckCircle, AlertTriangle, XCircle, Clock, CreditCard } from 'lucide-react';
+import Link from 'next/link'; // Assuming you're using Next.js
 
 interface PaymentStatusMessageProps {
   status: string;
   billingMonth?: string;
   rentAmount?: number;
   paidAmount?: number;
+  paymentUrl?: string; // Add payment URL prop
+  showPaymentLink?: boolean; // Control when to show the link
+  billingId?: string; // If you need to construct the URL dynamically
 }
 
 const PaymentStatusMessage = ({ 
   status, 
   billingMonth, 
   rentAmount = 0, 
-  paidAmount = 0 
+  paidAmount = 0,
+  paymentUrl,
+  showPaymentLink = false,
+  billingId
 }: PaymentStatusMessageProps) => {
   const getStatusMessage = () => {
     switch (status) {
@@ -49,6 +57,14 @@ const PaymentStatusMessage = ({
           bgColor: "bg-blue-50",
           borderColor: "border-blue-200"
         };
+      case 'unpaid': // Add unpaid status
+        return {
+          icon: AlertTriangle,
+          message: "Payment is due for this billing period. Click below to pay now.",
+          color: "text-warning",
+          bgColor: "bg-warning/10",
+          borderColor: "border-warning/20"
+        };
       default:
         return null;
     }
@@ -59,6 +75,12 @@ const PaymentStatusMessage = ({
   if (!statusInfo) return null;
 
   const { icon: Icon, message, color, bgColor, borderColor } = statusInfo;
+
+  // Construct payment URL if not provided directly
+  const finalPaymentUrl = paymentUrl || (billingId ? `/payment/${billingId}` : '/payment');
+
+  // Determine if payment button should be shown
+  const shouldShowPaymentButton = showPaymentLink && (status === 'unpaid' || status === 'partial' || status === 'rejected');
 
   return (
     <Card className={`${bgColor} ${borderColor} border-2`}>
@@ -85,6 +107,21 @@ const PaymentStatusMessage = ({
                 <p className={`font-medium ${color}`}>
                   Remaining: <span>KES {rentAmount - paidAmount}</span>
                 </p>
+              </div>
+            )}
+            
+            {/* Payment Button */}
+            {shouldShowPaymentButton && (
+              <div className="mt-3">
+                <Link href={finalPaymentUrl}>
+                  <Button 
+                    size="sm" 
+                    className="bg-primary hover:bg-primary/90 text-white"
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    Pay Now
+                  </Button>
+                </Link>
               </div>
             )}
           </div>
