@@ -35,7 +35,7 @@ const PaymentStatusMessage = ({
       case 'partial':
         return {
           icon: AlertTriangle,
-          message: "Your payment has been recorded as partial. Kindly pay the full rent amount.",
+          message: "Your payment has been recorded as partial. Please pay the remaining amount using the link below.",
           color: "text-warning",
           bgColor: "bg-warning/10",
           borderColor: "border-warning/20"
@@ -43,7 +43,7 @@ const PaymentStatusMessage = ({
       case 'rejected':
         return {
           icon: XCircle,
-          message: "Your payment has been rejected by the manager. Kindly contact the manager.",
+          message: "Your payment has been rejected by the manager. Please try again using the payment link below or contact support.",
           color: "text-destructive",
           bgColor: "bg-destructive/10",
           borderColor: "border-destructive/20"
@@ -56,10 +56,10 @@ const PaymentStatusMessage = ({
           bgColor: "bg-blue-50",
           borderColor: "border-blue-200"
         };
-      case 'unpaid': // Add unpaid status
+      case 'unpaid':
         return {
           icon: AlertTriangle,
-          message: "Payment is due for this billing period. Click below to pay now.",
+          message: "Payment is due for this billing period. Use the payment link below to pay now.",
           color: "text-warning",
           bgColor: "bg-warning/10",
           borderColor: "border-warning/20"
@@ -76,7 +76,7 @@ const PaymentStatusMessage = ({
   const { icon: Icon, message, color, bgColor, borderColor } = statusInfo;
 
   // Construct payment URL if not provided directly
-  const finalPaymentUrl = paymentUrl || (billingId ? `/payment/${billingId}` : '/payment');
+  const finalPaymentUrl = paymentUrl || (billingId ? `https://almubarak.kinnetikdevelopers.com/payment.html?billing=${billingId}` : 'https://almubarak.kinnetikdevelopers.com/payment.html');
 
   // Determine if payment button should be shown
   const shouldShowPaymentButton = showPaymentLink && (status === 'unpaid' || status === 'partial' || status === 'rejected');
