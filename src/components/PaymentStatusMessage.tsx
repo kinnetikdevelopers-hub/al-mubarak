@@ -76,7 +76,7 @@ const PaymentStatusMessage = ({
   const { icon: Icon, message, color, bgColor, borderColor } = statusInfo;
 
   // Construct payment URL if not provided directly
-  const finalPaymentUrl = paymentUrl || (billingId ? `https://almubarak.kinnetikdevelopers.com/payment.html?billing=${billingId}` : 'https://almubarak.kinnetikdevelopers.com/payment.html');
+  const finalPaymentUrl = paymentUrl || (billingId ? `/payment?billing=${billingId}` : '/payment');
 
   // Determine if payment button should be shown
   const shouldShowPaymentButton = showPaymentLink && (status === 'unpaid' || status === 'partial' || status === 'rejected');
@@ -131,3 +131,4 @@ const PaymentStatusMessage = ({
 };
 
 export default PaymentStatusMessage;
+
