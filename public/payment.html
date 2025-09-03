@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Payment - PesaPal Gateway</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .payment-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            max-width: 450px;
+            width: 100%;
+            position: relative;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .payment-content {
+            padding: 30px;
+        }
+
+        .step {
+            display: none;
+        }
+
+        .step.active {
+            display: block;
+            animation: slideIn 0.3s ease-in-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .step-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .payment-methods {
+            display: grid;
+            gap: 15px;
+        }
+
+        .payment-method {
+            border: 2px solid #e1e5e9;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .payment-method:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+        }
+
+        .payment-method.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea10 0%, #764ba210 100%);
+        }
+
+        .payment-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .mpesa { background: #00d13a; }
+        .card { background: #1a73e8; }
+        .airtel { background: #ff6b35; }
+        .bank { background: #6c5ce7; }
+
+        .payment-info {
+            flex: 1;
+        }
+
+        .payment-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .payment-desc {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .amount-input {
+            font-size: 24px;
+            font-weight: 600;
+            text-align: center;
+            color: #333;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #666;
+            border: 2px solid #e1e5e9;
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+            box-shadow: none;
+        }
+
+        .processing-animation {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .currency-symbol {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 24px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .amount-container {
+            position: relative;
+        }
+
+        .amount-container .form-input {
+            padding-left: 45px;
+        }
+
+        .error-message {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c66;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .success-message {
+            background: #efe;
+            border: 1px solid #cfc;
+            color: #6c6;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="payment-container">
+        <div class="header">
+            <h1>Quick Payment</h1>
+            <p>Simple, fast, and secure payments</p>
+        </div>
+
+        <div class="payment-content">
+            <!-- Step 1: Payment Method Selection -->
+            <div id="step1" class="step active">
+                <h2 class="step-title">Choose Payment Method</h2>
+                <div class="payment-methods">
+                    <div class="payment-method" data-method="mpesa">
+                        <div class="payment-icon mpesa">M</div>
+                        <div class="payment-info">
+                            <div class="payment-name">M-Pesa</div>
+                            <div class="payment-desc">Pay using your M-Pesa mobile wallet</div>
+                        </div>
+                    </div>
+                    <div class="payment-method" data-method="card">
+                        <div class="payment-icon card">💳</div>
+                        <div class="payment-info">
+                            <div class="payment-name">Credit/Debit Card</div>
+                            <div class="payment-desc">Visa, Mastercard, and other cards</div>
+                        </div>
+                    </div>
+                    <div class="payment-method" data-method="airtel">
+                        <div class="payment-icon airtel">A</div>
+                        <div class="payment-info">
+                            <div class="payment-name">Airtel Money</div>
+                            <div class="payment-desc">Pay using Airtel Money</div>
+                        </div>
+                    </div>
+                    <div class="payment-method" data-method="bank">
+                        <div class="payment-icon bank">🏦</div>
+                        <div class="payment-info">
+                            <div class="payment-name">Bank Transfer</div>
+                            <div class="payment-desc">Direct bank account transfer</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Payment Details -->
+            <div id="step2" class="step">
+                <h2 class="step-title" id="paymentTitle">Enter Payment Details</h2>
+                <div id="errorContainer"></div>
+                <form id="paymentForm">
+                    <div class="form-group">
+                        <label class="form-label">Amount</label>
+                        <div class="amount-container">
+                            <span class="currency-symbol">KSh</span>
+                            <input type="number" class="form-input amount-input" id="amount" placeholder="0.00" required min="1" step="0.01">
+                        </div>
+                    </div>
+                    
+                    <div id="dynamicFields">
+                        <!-- Dynamic fields will be inserted here based on payment method -->
+                    </div>
+                    
+                    <button type="submit" class="btn" id="payBtn">Process Payment</button>
+                    <button type="button" class="btn btn-secondary" onclick="goBack()">Back</button>
+                </form>
+            </div>
+
+            <!-- Step 3: Processing -->
+            <div id="step3" class="step">
+                <div class="processing-animation">
+                    <div class="spinner"></div>
+                    <h2 class="step-title">Processing Payment</h2>
+                    <p id="processingMessage">Please wait while we process your payment...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== PESAPAL CONFIGURATION - ADD YOUR CREDENTIALS HERE =====
+        const PESAPAL_CONFIG = {
+            // LIVE Environment (for real payments)
+            baseURL: 'https://pay.pesapal.com/v3/api/',
+            
+            // ADD YOUR CREDENTIALS FROM PESAPAL EMAIL HERE:
+            consumerKey: 'TS1AAPLiDDYZ9gCukKcp9UIAPkzl1sIR',           // Replace with your Consumer Key
+            consumerSecret: 'FHT8z2vjr2BQISncyxOzrzejFdg=',     // Replace with your Consumer Secret
+            
+            // Your website URLs - UPDATE THESE:
+            callbackUrl: 'https://almubarak.kinnetikdevelopers.com/success.html',        // Success page URL
+            cancellationUrl: 'https://almubarak.kinnetikdevelopers.com/cancelled.html',  // Cancel page URL
+            
+            // Optional: IPN ID if you have one set up
+            ipnId: 'YOUR_IPN_ID_HERE'  // Leave as is if you don't have one yet
+        };
+
+        // ===== APPLICATION LOGIC =====
+        let selectedMethod = '';
+        let currentStep = 1;
+        let accessToken = null;
+
+        // Payment method selection
+        document.querySelectorAll('.payment-method').forEach(method => {
+            method.addEventListener('click', function() {
+                document.querySelectorAll('.payment-method').forEach(m => m.classList.remove('selected'));
+                this.classList.add('selected');
+                selectedMethod = this.dataset.method;
+                
+                setTimeout(() => {
+                    showStep(2);
+                    setupPaymentForm(selectedMethod);
+                }, 500);
+            });
+        });
+
+        function showStep(step) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById(`step${step}`).classList.add('active');
+            currentStep = step;
+        }
+
+        function setupPaymentForm(method) {
+            const title = document.getElementById('paymentTitle');
+            const dynamicFields = document.getElementById('dynamicFields');
+            const payBtn = document.getElementById('payBtn');
+            
+            dynamicFields.innerHTML = '';
+            clearError();
+            
+            switch(method) {
+                case 'mpesa':
+                    title.textContent = 'M-Pesa Payment';
+                    dynamicFields.innerHTML = `
+                        <div class="form-group">
+                            <label class="form-label">Phone Number</label>
+                            <input type="tel" class="form-input" id="phone" placeholder="254712345678" required pattern="254[0-9]{9}">
+                            <small style="color: #666; font-size: 12px;">Format: 254XXXXXXXXX</small>
+                        </div>
+                    `;
+                    payBtn.textContent = 'Send STK Push';
+                    break;
+                    
+                case 'card':
+                    title.textContent = 'Card Payment';
+                    payBtn.textContent = 'Pay with Card';
+                    break;
+                    
+                case 'airtel':
+                    title.textContent = 'Airtel Money Payment';
+                    dynamicFields.innerHTML = `
+                        <div class="form-group">
+                            <label class="form-label">Airtel Phone Number</label>
+                            <input type="tel" class="form-input" id="airtelPhone" placeholder="254700123456" required pattern="254[0-9]{9}">
+                            <small style="color: #666; font-size: 12px;">Format: 254XXXXXXXXX</small>
+                        </div>
+                    `;
+                    payBtn.textContent = 'Send Payment Request';
+                    break;
+                    
+                case 'bank':
+                    title.textContent = 'Bank Transfer';
+                    payBtn.textContent = 'Generate Payment Link';
+                    break;
+            }
+        }
+
+        function goBack() {
+            showStep(1);
+            selectedMethod = '';
+            document.querySelectorAll('.payment-method').forEach(m => m.classList.remove('selected'));
+            clearError();
+        }
+
+        // Handle form submission
+        document.getElementById('paymentForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const amount = document.getElementById('amount').value;
+            
+            if (!amount || amount <= 0) {
+                showError('Please enter a valid amount');
+                return;
+            }
+
+            // Validate phone number for M-Pesa and Airtel
+            if (selectedMethod === 'mpesa') {
+                const phone = document.getElementById('phone').value;
+                if (!phone.match(/^254[0-9]{9}$/)) {
+                    showError('Please enter a valid phone number (254XXXXXXXXX)');
+                    return;
+                }
+            }
+            
+            if (selectedMethod === 'airtel') {
+                const phone = document.getElementById('airtelPhone').value;
+                if (!phone.match(/^254[0-9]{9}$/)) {
+                    showError('Please enter a valid Airtel phone number (254XXXXXXXXX)');
+                    return;
+                }
+            }
+            
+            showStep(3);
+            await processPesaPalPayment(selectedMethod, amount);
+        });
+
+        // ===== PESAPAL API INTEGRATION =====
+        async function processPesaPalPayment(method, amount) {
+            try {
+                updateProcessingMessage('Getting access token...');
+                
+                // Step 1: Get Access Token
+                const token = await getPesaPalToken();
+                accessToken = token;
+                
+                updateProcessingMessage('Preparing payment...');
+                
+                // Step 2: Submit Order Request
+                const orderData = createOrderData(method, amount);
+                const paymentResponse = await submitOrderRequest(orderData);
+                
+                if (paymentResponse.redirect_url) {
+                    updateProcessingMessage('Redirecting to payment page...');
+                    // Redirect to PesaPal payment page
+                    setTimeout(() => {
+                        window.location.href = paymentResponse.redirect_url;
+                    }, 1000);
+                } else {
+                    throw new Error('No redirect URL received from PesaPal');
+                }
+                
+            } catch (error) {
+                console.error('Payment error:', error);
+                showError('Payment failed: ' + error.message);
+                setTimeout(() => goBack(), 3000);
+            }
+        }
+
+        async function getPesaPalToken() {
+            const response = await fetch(PESAPAL_CONFIG.baseURL + 'Auth/RequestToken', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    consumer_key: PESAPAL_CONFIG.consumerKey,
+                    consumer_secret: PESAPAL_CONFIG.consumerSecret
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Authentication failed: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.token) {
+                return result.token;
+            } else {
+                throw new Error('Failed to get access token: ' + (result.message || 'Unknown error'));
+            }
+        }
+
+        async function submitOrderRequest(orderData) {
+            const response = await fetch(PESAPAL_CONFIG.baseURL + 'Transactions/SubmitOrderRequest', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(orderData)
+            });
+
+            if (!response.ok) {
+                throw new Error(`Payment request failed: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.error) {
+                throw new Error(result.error.message || 'Payment request failed');
+            }
+            
+            return result;
+        }
+
+        function createOrderData(method, amount) {
+            const orderId = generateOrderId();
+            const phoneNumber = getPhoneNumber(method);
+            
+            return {
+                id: orderId,
+                currency: 'KES',
+                amount: parseFloat(amount),
+                description: `Payment via ${method.toUpperCase()}`,
+                callback_url: PESAPAL_CONFIG.callbackUrl,
+                cancellation_url: PESAPAL_CONFIG.cancellationUrl,
+                notification_id: PESAPAL_CONFIG.ipnId || '',
+                billing_address: {
+                    email_address: 'customer@payment.com',
+                    phone_number: phoneNumber,
+                    country_code: 'KE',
+                    first_name: 'Customer',
+                    middle_name: '',
+                    last_name: 'Payment',
+                    line_1: 'Nairobi',
+                    line_2: '',
+                    city: 'Nairobi',
+                    state: 'Nairobi',
+                    postal_code: '00100',
+                    zip_code: '00100'
+                }
+            };
+        }
+
+        function generateOrderId() {
+            return 'ORDER_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        function getPhoneNumber(method) {
+            if (method === 'mpesa') {
+                return document.getElementById('phone').value || '254700000000';
+            } else if (method === 'airtel') {
+                return document.getElementById('airtelPhone').value || '254700000000';
+            }
+            return '254700000000'; // Default for card/bank payments
+        }
+
+        function updateProcessingMessage(message) {
+            document.getElementById('processingMessage').textContent = message;
+        }
+
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            errorContainer.innerHTML = `<div class="error-message">${message}</div>`;
+        }
+
+        function clearError() {
+            document.getElementById('errorContainer').innerHTML = '';
+        }
+
+        // ===== INITIALIZATION =====
+        console.log('Payment Gateway Initialized');
+        console.log('Environment:', PESAPAL_CONFIG.baseURL);
+        
+        // Check if credentials are configured
+        if (PESAPAL_CONFIG.consumerKey === 'YOUR_CONSUMER_KEY_HERE') {
+            console.warn('⚠️ PesaPal credentials not configured! Please update PESAPAL_CONFIG.');
+        }
+    </script>
+</body>
+</html>
