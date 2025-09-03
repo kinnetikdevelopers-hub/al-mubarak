@@ -112,7 +112,7 @@ const PaymentStatusMessage = ({
             {/* Payment Button */}
             {shouldShowPaymentButton && (
               <div className="mt-3">
-                <Link href={finalPaymentUrl}>
+                <a href={finalPaymentUrl}>
                   <Button 
                     size="sm" 
                     className="bg-primary hover:bg-primary/90 text-white"
@@ -120,7 +120,7 @@ const PaymentStatusMessage = ({
                     <CreditCard className="h-4 w-4 mr-2" />
                     Pay Now
                   </Button>
-                </Link>
+                </a>
               </div>
             )}
           </div>
